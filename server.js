@@ -260,7 +260,7 @@ app.get('/health', (req, res) => {
  * GET /
  */
 app.get('/', (req, res) => {
-  res.sendFile(path.join(__dirname, '..', 'scanner-interface.html'));
+  res.sendFile(path.join(__dirname, 'scanner-interface.html'));
 });
 
 // Error handling middleware
