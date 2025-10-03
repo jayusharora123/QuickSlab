@@ -120,7 +120,7 @@ class PSAService {
         Subject: cert.Subject || '',
         CardNumber: cert.CardNumber || '',
         Status: 'Graded',
-        Authenticated: 'Yes',
+        Authenticated: 'Y',
         Company: 'PSA',
         Grade: numericGrade,
         CertNumber: cert.CertNumber || ''
