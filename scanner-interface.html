@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>PSA Card Scanner - Inventory System</title>
   <style>
     /* Main Layout */
@@ -49,7 +49,8 @@
       display: block;
       margin-bottom: 8px;
       font-weight: 600;
-      color: #333;
+      color: #2c3e50;
+      font-size: 15px;
     }
     
     input[type="text"] {
@@ -317,33 +318,185 @@
       display: flex !important;
     }
     
-    /* Responsive Design */
-    @media (max-width: 600px) {
-      .container {
-        margin: 10px;
-        border-radius: 10px;
+    /* Mobile-First Responsive Design */
+    @media (max-width: 768px) {
+      body {
+        padding: 10px;
+        font-size: 16px; /* Prevent zoom on input focus */
       }
       
-      .content {
-        padding: 20px;
+      .container {
+        margin: 0;
+        border-radius: 10px;
+        min-height: calc(100vh - 20px);
       }
       
       .header {
-        padding: 20px;
+        padding: 20px 15px;
       }
       
       .header h1 {
-        font-size: 1.5rem;
+        font-size: 1.8rem;
+        margin-bottom: 5px;
       }
       
-      .data-grid {
-        grid-template-columns: 1fr;
-        gap: 5px;
+      .header p {
+        font-size: 0.9rem;
+        margin: 0;
       }
       
+      .content {
+        padding: 20px 15px;
+      }
+      
+      /* Mobile Input Styling */
+      input[type="text"] {
+        padding: 16px 12px;
+        font-size: 16px;
+        border-radius: 8px;
+        min-height: 50px;
+        box-sizing: border-box;
+      }
+      
+      /* Mobile Button Styling */
+      .btn {
+        padding: 16px 20px;
+        font-size: 16px;
+        min-height: 50px;
+        border-radius: 8px;
+        cursor: pointer;
+        touch-action: manipulation;
+      }
+      
+      .btn-full {
+        margin-bottom: 20px;
+      }
+      
+      /* Mobile Input Group */
+      .input-group {
+        margin-bottom: 25px;
+      }
+      
+      .input-group > div {
+        flex-direction: column;
+        gap: 12px;
+      }
+      
+      .input-group input {
+        margin-bottom: 12px;
+      }
+      
+      .input-group button {
+        width: 100%;
+        min-width: auto;
+      }
+      
+      /* Mobile Configuration Panel */
+      .config-section {
+        margin: 25px 0;
+        padding: 20px 15px;
+      }
+      
+      .config-header {
+        padding: 15px;
+        font-size: 1.1rem;
+      }
+      
+      .config-content {
+        padding: 15px;
+        gap: 15px;
+      }
+      
+      /* Mobile Recent Scans */
+      .history-section {
+        margin-top: 25px;
+      }
+      
+      .scan-table {
+        font-size: 14px;
+        margin: 15px -15px; /* Extend to edges on mobile */
+        border-radius: 0;
+      }
+      
+      .scan-table th,
+      .scan-table td {
+        padding: 12px 8px;
+        font-size: 13px;
+      }
+      
+      .scan-table th:first-child,
+      .scan-table td:first-child {
+        padding-left: 15px;
+      }
+      
+      .scan-table th:last-child,
+      .scan-table td:last-child {
+        padding-right: 15px;
+      }
+      
+      /* Mobile Table Controls */
+      .table-controls {
+        flex-direction: column;
+        gap: 12px;
+        margin: 15px 0;
+      }
+      
+      .table-controls .btn {
+        width: 100%;
+      }
+      
+      /* Scanner Modal Mobile Optimization */
       #scannerModal > div {
         margin: 10px;
-        max-height: 95%;
+        padding: 15px;
+        max-height: 95vh;
+        max-width: 95vw;
+      }
+      
+      #scannerModal h3 {
+        font-size: 1.3rem;
+        margin-bottom: 15px;
+      }
+      
+      #scanner-container {
+        max-width: 100%;
+      }
+      
+      #scanner-video {
+        border-radius: 12px;
+      }
+      
+      /* Mobile Scanner Controls */
+      #scanner-container > div:last-child {
+        bottom: 15px;
+        gap: 15px;
+      }
+      
+      #scanner-container button {
+        width: 50px;
+        height: 50px;
+        font-size: 20px;
+        border-radius: 25px;
+      }
+      
+      /* Status Messages Mobile */
+      .status {
+        padding: 12px 15px;
+        margin: 15px 0;
+        border-radius: 8px;
+        font-size: 15px;
+      }
+    }
+    
+    /* Tablet Optimization */
+    @media (min-width: 769px) and (max-width: 1024px) {
+      .container {
+        margin: 20px auto;
+        max-width: 90%;
+      }
+      
+      .content {
+        padding: 25px;
       }
     }
   </style>
