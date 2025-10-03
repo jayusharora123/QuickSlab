@@ -18,15 +18,26 @@ class GoogleSheetsService {
    * @returns {Promise<void>}
    */
   async initialize() {
-    if (!this.serviceAccountKeyPath) {
-      throw new Error('Service account key path is required');
-    }
-
     try {
-      this.auth = new google.auth.GoogleAuth({
-        keyFile: this.serviceAccountKeyPath,
-        scopes: ['https://www.googleapis.com/auth/spreadsheets'],
-      });
+      // Try to use JSON string from environment variable first (for Railway)
+      const serviceAccountJson = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+      
+      if (serviceAccountJson) {
+        // Parse JSON string and use credentials directly
+        const credentials = JSON.parse(serviceAccountJson);
+        this.auth = new google.auth.GoogleAuth({
+          credentials: credentials,
+          scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+        });
+      } else if (this.serviceAccountKeyPath) {
+        // Fallback to file path (for local development)
+        this.auth = new google.auth.GoogleAuth({
+          keyFile: this.serviceAccountKeyPath,
+          scopes: ['https://www.googleapis.com/auth/spreadsheets'],
+        });
+      } else {
+        throw new Error('Service account credentials are required (either GOOGLE_SERVICE_ACCOUNT_JSON or key file path)');
+      }
       
       this.sheets = google.sheets({ version: 'v4', auth: this.auth });
       
