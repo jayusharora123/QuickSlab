@@ -363,7 +363,7 @@
           <label for="barcodeInput">PSA Certificate Number</label>
           <div style="display: flex; gap: 10px; align-items: center;">
             <input type="text" id="barcodeInput" placeholder="Enter or scan certificate number..." autofocus style="flex: 1;">
-            <button class="btn btn-secondary" onclick="testScanner()" id="scannerButton" style="min-width: 150px;">
+            <button class="btn btn-secondary" onclick="startBarcodeScanner()" id="scannerButton" style="min-width: 150px;">
               📷 Scan QR/Barcode
             </button>
           </div>
@@ -982,20 +982,7 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
         // Initialize ZXing code reader with hints for better performance
         codeReader = new ZXing.BrowserMultiFormatReader();
         
-        // Configure decoding hints for better QR code and barcode recognition
-        const hints = new Map();
-        hints.set(ZXing.DecodeHintType.TRY_HARDER, true);
-        hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [
-          ZXing.BarcodeFormat.QR_CODE,      // QR codes (priority)
-          ZXing.BarcodeFormat.DATA_MATRIX,   // Data Matrix codes
-          ZXing.BarcodeFormat.CODE_128,      // Common barcode format
-          ZXing.BarcodeFormat.CODE_39,       // Another common format
-          ZXing.BarcodeFormat.UPC_A,         // UPC codes
-          ZXing.BarcodeFormat.UPC_E,
-          ZXing.BarcodeFormat.EAN_13,        // EAN codes
-          ZXing.BarcodeFormat.EAN_8
-        ]);
-        codeReader.setHints(hints);
+        console.log('ZXing reader created successfully');
         
         // Get available video devices
         const videoInputDevices = await codeReader.listVideoInputDevices();
@@ -1029,20 +1016,18 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
           
           if (result) {
             const code = result.getText();
-            console.log('Code detected:', code, 'Format:', result.getBarcodeFormat());
+            console.log('Code detected:', code);
             
             let certNumber = null;
             
-            // Handle QR codes (may contain URLs or other data)
-            if (result.getBarcodeFormat() === ZXing.BarcodeFormat.QR_CODE) {
-              console.log('QR Code detected:', code);
+            // Try to determine if it's a QR code by content characteristics
+            // QR codes often contain URLs or longer strings
+            const isLikelyQR = code.length > 20 || code.includes('http') || code.includes('://');
+            
+            if (isLikelyQR) {
+              console.log('Likely QR Code detected:', code);
               
               // Try to extract certificate number from QR code content
-              // Common patterns for PSA QR codes:
-              // 1. Direct cert number: "12345678"
-              // 2. URL with cert: "https://www.psacard.com/cert/12345678"
-              // 3. JSON or structured data
-              
               if (code.match(/^\d{8,12}$/)) {
                 // Direct cert number
                 certNumber = code;
@@ -1067,7 +1052,7 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
                 return; // Continue scanning
               }
             } 
-            // Handle traditional barcodes
+            // Handle what looks like traditional barcodes (shorter, numeric)
             else if (code && code.match(/^\d{8,12}$/)) {
               certNumber = code;
               showStatus(`📱 Barcode scanned: PSA Certificate ${certNumber}!`, 'success');
