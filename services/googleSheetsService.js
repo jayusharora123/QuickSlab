@@ -96,26 +96,21 @@ class GoogleSheetsService {
       const tableStartRow = 4; // Row 4 (after headers and examples in rows 1-3)
       const targetRow = await this.findNextAvailableRow(tableStartRow);
       
-      // Create formula for automatic row numbering
-      const previousRow = targetRow - 1;
-      const rowNumberFormula = `=A${previousRow}+1`;
-
-      // Prepare the row data according to column mapping
+      // Prepare the row data according to column mapping (no row number needed)
       const rowData = [
-        rowNumberFormula,           // Column A: Auto-calculated row number
-        sheetsData.Subject,         // Column B: Card Name
-        sheetsData.CardNumber,      // Column C: Card Number
-        sheetsData.Status,          // Column D: Condition (Graded)
-        sheetsData.Authenticated,   // Column E: Graded? (Yes)
-        sheetsData.Company,         // Column F: Company (PSA)
-        sheetsData.Grade,          // Column G: Grade (Numeric)
-        sheetsData.CertNumber      // Column H: Certification Number
+        sheetsData.Subject,         // Column A: Card Name
+        sheetsData.CardNumber,      // Column B: Card Number
+        sheetsData.Status,          // Column C: Condition (Graded)
+        sheetsData.Authenticated,   // Column D: Graded? (Yes)
+        sheetsData.Company,         // Column E: Company (PSA)
+        sheetsData.Grade,          // Column F: Grade (Numeric)
+        sheetsData.CertNumber      // Column G: Certification Number
       ];
 
-      // Insert the data at the specific row
+      // Insert the data at the specific row (columns A to G)
       const updateResult = await this.sheets.spreadsheets.values.update({
         spreadsheetId: this.spreadsheetId,
-        range: `${this.sheetName}!A${targetRow}:H${targetRow}`,
+        range: `${this.sheetName}!A${targetRow}:G${targetRow}`,
         valueInputOption: 'USER_ENTERED', // Process formulas
         resource: {
           values: [rowData]
@@ -154,15 +149,15 @@ class GoogleSheetsService {
       // Get existing data to find first empty row
       const existingDataResponse = await this.sheets.spreadsheets.values.get({
         spreadsheetId: this.spreadsheetId,
-        range: `${this.sheetName}!A${startRow}:H${tableEndRow}`
+        range: `${this.sheetName}!A${startRow}:G${tableEndRow}`
       });
       
       const existingData = existingDataResponse.data.values || [];
       
-      // Find first empty row (where column B is empty, since that's our main data column)
+      // Find first empty row (where column A is empty, since that's our card name column now)
       for (let i = 0; i < existingData.length; i++) {
         const row = existingData[i] || [];
-        if (!row[1] || row[1].toString().trim() === '') { // Column B (index 1) is Subject/Card Name
+        if (!row[0] || row[0].toString().trim() === '') { // Column A (index 0) is Card Name
           return startRow + i;
         }
       }
