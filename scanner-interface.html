@@ -956,57 +956,67 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
     async function startBarcodeScanner() {
       const modal = document.getElementById('scannerModal');
       const video = document.getElementById('scanner-video');
+      const container = document.getElementById('scanner-container');
       
       try {
+        // Show modal first
+        modal.classList.add('active');
+        
         // Request camera access
         scannerStream = await navigator.mediaDevices.getUserMedia({ 
           video: { 
             facingMode: 'environment', // Use rear camera on mobile
-            width: { ideal: 1280 },
-            height: { ideal: 720 }
+            width: { ideal: 640 },
+            height: { ideal: 480 }
           } 
         });
         
+        // Set video source and play
         video.srcObject = scannerStream;
-        modal.classList.add('active');
+        video.play();
         
-        // Initialize Quagga barcode scanner
-        Quagga.init({
-          inputStream: {
-            name: "Live",
-            type: "LiveStream",
-            target: video,
-            constraints: {
-              width: 640,
-              height: 480,
-              facingMode: "environment"
+        // Wait for video to be ready
+        video.onloadedmetadata = function() {
+          // Initialize Quagga barcode scanner
+          Quagga.init({
+            inputStream: {
+              name: "Live",
+              type: "LiveStream",
+              target: container,
+              constraints: {
+                width: { min: 640 },
+                height: { min: 480 },
+                facingMode: "environment",
+                aspectRatio: { min: 1, max: 2 }
+              }
+            },
+            locator: {
+              patchSize: "medium",
+              halfSample: true
+            },
+            numOfWorkers: 2,
+            decoder: {
+              readers: [
+                "code_128_reader",
+                "ean_reader",
+                "ean_8_reader",
+                "code_39_reader",
+                "upc_reader",
+                "upc_e_reader"
+              ]
+            },
+            locate: true
+          }, function(err) {
+            if (err) {
+              console.error('Quagga initialization failed:', err);
+              showStatus('❌ Camera scanner failed to start', 'error');
+              stopBarcodeScanner();
+              return;
             }
-          },
-          decoder: {
-            readers: [
-              "code_128_reader",
-              "ean_reader",
-              "ean_8_reader", 
-              "code_39_reader",
-              "code_39_vin_reader",
-              "codabar_reader",
-              "upc_reader",
-              "upc_e_reader"
-            ]
-          },
-          locate: true,
-          frequency: 10,
-          debug: false
-        }, function(err) {
-          if (err) {
-            console.error('Quagga initialization failed:', err);
-            showStatus('❌ Camera scanner initialization failed', 'error');
-            stopBarcodeScanner();
-            return;
-          }
-          
-          console.log('Barcode scanner initialized successfully');
-          Quagga.start();
+            
+            console.log('Barcode scanner initialized successfully');
+            Quagga.start();
+          });
           
           // Listen for successful barcode detection
           Quagga.onDetected(function(result) {
@@ -1027,7 +1037,7 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
               lookupCard();
             }, 1000);
           });
-        });
+        };
         
       } catch (error) {
         console.error('Camera access error:', error);
