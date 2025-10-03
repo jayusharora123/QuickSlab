@@ -1,0 +1,918 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PSA Card Scanner - Inventory System</title>
+  <style>
+    /* Main Layout */
+    body { 
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+      margin: 0; 
+      padding: 20px; 
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+    }
+    
+    .container {
+      max-width: 800px;
+      margin: 0 auto;
+      background: white;
+      border-radius: 15px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      overflow: hidden;
+    }
+    
+    .header {
+      background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+    
+    .header h1 {
+      margin: 0;
+      font-size: 2rem;
+      font-weight: 300;
+    }
+    
+    .content {
+      padding: 30px;
+    }
+    
+    /* Form Styles */
+    .input-group {
+      margin-bottom: 20px;
+    }
+    
+    label {
+      display: block;
+      margin-bottom: 8px;
+      font-weight: 600;
+      color: #333;
+    }
+    
+    input[type="text"] {
+      width: 100%;
+      padding: 15px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 16px;
+      box-sizing: border-box;
+      transition: border-color 0.3s ease;
+    }
+    
+    input[type="text"]:focus {
+      outline: none;
+      border-color: #4CAF50;
+      box-shadow: 0 0 0 3px rgba(76, 175, 80, 0.1);
+    }
+    
+    #barcodeInput {
+      text-align: center;
+      font-size: 18px;
+      font-weight: bold;
+      border-color: #4CAF50;
+    }
+    
+    /* Button Styles */
+    .btn {
+      padding: 15px 30px;
+      border: none;
+      border-radius: 8px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      text-decoration: none;
+      display: inline-block;
+      text-align: center;
+    }
+    
+    .btn-primary {
+      background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+      color: white;
+    }
+    
+    .btn-primary:hover:not(:disabled) {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(76, 175, 80, 0.3);
+    }
+    
+    .btn-secondary {
+      background: linear-gradient(135deg, #2196F3 0%, #1976D2 100%);
+      color: white;
+    }
+    
+    .btn-warning {
+      background: linear-gradient(135deg, #FF9800 0%, #F57C00 100%);
+      color: white;
+    }
+    
+    .btn:disabled {
+      background: #ccc;
+      cursor: not-allowed;
+      transform: none;
+    }
+    
+    .btn-full {
+      width: 100%;
+      margin-bottom: 15px;
+    }
+    
+    /* Status Messages */
+    .status {
+      padding: 15px;
+      margin: 15px 0;
+      border-radius: 8px;
+      font-weight: 500;
+    }
+    
+    .status.success {
+      background: #d4edda;
+      color: #155724;
+      border: 1px solid #c3e6cb;
+    }
+    
+    .status.error {
+      background: #f8d7da;
+      color: #721c24;
+      border: 1px solid #f5c6cb;
+    }
+    
+    .status.info {
+      background: #d1ecf1;
+      color: #0c5460;
+      border: 1px solid #bee5eb;
+    }
+    
+    .status.loading {
+      background: #fff3cd;
+      color: #856404;
+      border: 1px solid #ffeaa7;
+    }
+    
+    /* Card Data Display */
+    .card-data {
+      background: #f8f9fa;
+      border: 1px solid #e9ecef;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+    
+    .card-data h3 {
+      margin: 0 0 15px 0;
+      color: #2c3e50;
+      font-size: 1.3rem;
+    }
+    
+    .data-grid {
+      display: grid;
+      grid-template-columns: 1fr 2fr;
+      gap: 10px;
+      margin-bottom: 10px;
+    }
+    
+    .data-label {
+      font-weight: 600;
+      color: #555;
+    }
+    
+    .data-value {
+      color: #2c3e50;
+      word-break: break-word;
+    }
+    
+    /* Configuration Panel */
+    .config-panel {
+      background: #fff3cd;
+      border: 1px solid #ffeaa7;
+      border-radius: 8px;
+      padding: 20px;
+      margin: 20px 0;
+    }
+    
+    .config-panel h3 {
+      margin: 0 0 15px 0;
+      color: #856404;
+    }
+    
+    /* Scan History */
+    .history-section {
+      margin-top: 30px;
+    }
+    
+    /* Scan History Table */
+    .scan-table {
+      width: 100%;
+      border-collapse: collapse;
+      background: white;
+      border-radius: 8px;
+      overflow: hidden;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+      margin: 15px 0;
+    }
+    
+    .scan-table th,
+    .scan-table td {
+      padding: 16px 20px;
+      text-align: center;
+      border-bottom: 1px solid #e0e0e0;
+      vertical-align: middle;
+    }
+    
+    .scan-table th {
+      background: linear-gradient(135deg, #4CAF50 0%, #45a049 100%);
+      color: white;
+      font-weight: 600;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+    
+    .scan-table tr:hover {
+      background: #f8f9fa;
+    }
+    
+    .scan-table tr.selected {
+      background: #e8f5e8;
+    }
+    
+    .scan-table tr.error {
+      background: #ffe6e6;
+    }
+    
+    .scan-table tr.error td {
+      color: #666;
+      font-style: italic;
+    }
+    
+    .scan-table .cert-number {
+      font-weight: bold;
+      color: #2c3e50;
+    }
+    
+    .scan-table .grade {
+      font-weight: bold;
+      color: #4CAF50;
+    }
+    
+    .scan-table .timestamp {
+      font-size: 0.9rem;
+      color: #666;
+    }
+    
+    .scan-table .checkbox-cell {
+      width: 50px;
+      text-align: center;
+    }
+    
+    .scan-table input[type="checkbox"] {
+      transform: scale(1.2);
+      cursor: pointer;
+    }
+    
+    .no-scans-message {
+      text-align: center;
+      padding: 40px;
+      color: #666;
+      font-style: italic;
+    }
+    
+    .history-item {
+      background: #f8f9fa;
+      border-left: 4px solid #4CAF50;
+      padding: 15px;
+      margin: 10px 0;
+      border-radius: 4px;
+    }
+    
+    .history-item.error {
+      border-left-color: #dc3545;
+    }
+    
+    .history-time {
+      font-size: 0.9rem;
+      color: #666;
+    }
+    
+    .history-cert {
+      font-weight: bold;
+      color: #2c3e50;
+    }
+    
+    /* Responsive Design */
+    @media (max-width: 600px) {
+      .container {
+        margin: 10px;
+        border-radius: 10px;
+      }
+      
+      .content {
+        padding: 20px;
+      }
+      
+      .header {
+        padding: 20px;
+      }
+      
+      .header h1 {
+        font-size: 1.5rem;
+      }
+      
+      .data-grid {
+        grid-template-columns: 1fr;
+        gap: 5px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🔍 PSA Card Scanner</h1>
+      <p>Pokemon Slab Inventory System</p>
+    </div>
+    
+    <div class="content">
+      <!-- Scanner Input Section -->
+      <div class="input-group">
+        <label for="barcodeInput">Scan PSA Certificate Barcode</label>
+        <input type="text" id="barcodeInput" placeholder="Position cursor here and scan barcode..." autofocus>
+      </div>
+      
+      <button class="btn btn-primary btn-full" onclick="lookupCard()" id="lookupButton">
+        🔍 Lookup Card
+      </button>
+      
+      <!-- Test Buttons -->
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin: 20px 0;">
+        <button class="btn btn-secondary" onclick="testCard('82513373')">
+          🧪 Test with Pokémon Card
+        </button>
+        <button class="btn btn-secondary" onclick="testCard('120420640')">
+          🧪 Test with Sample Card
+        </button>
+      </div>
+      
+      <!-- Status Display -->
+      <div id="status"></div>
+      
+      <!-- Card Data Display -->
+      <div id="cardData"></div>
+      
+      <!-- Spreadsheet Configuration -->
+      <div class="config-panel" id="configPanel" style="display: none;">
+        <h3>📊 Spreadsheet Configuration</h3>
+        <div class="input-group">
+          <label for="spreadsheetUrl">Google Sheets URL</label>
+          <input type="text" id="spreadsheetUrl" placeholder="Paste your Google Sheets URL here...">
+        </div>
+        <button class="btn btn-warning btn-full" onclick="updateSpreadsheetFromUrl()">
+          📋 Update Spreadsheet
+        </button>
+      </div>
+      
+      <!-- Current Configuration Display -->
+      <div class="config-panel">
+        <h3>⚙️ Current Configuration</h3>
+        <div class="data-grid">
+          <span class="data-label">Spreadsheet:</span>
+          <span class="data-value" id="currentSpreadsheetId">Loading...</span>
+          <span class="data-label">Sheet Name:</span>
+          <span class="data-value" id="currentSheetName">Loading...</span>
+        </div>
+        <button class="btn btn-warning btn-full" onclick="showSpreadsheetConfig()">
+          📝 Change Spreadsheet
+        </button>
+      </div>
+      
+      <!-- Scan History -->
+      <div class="history-section">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+          <h3>📋 Recent Scans</h3>
+          <div style="display: flex; gap: 10px;">
+            <button class="btn btn-primary" onclick="selectAllCards()" id="selectAllBtn" style="padding: 8px 16px; font-size: 14px;">
+              ✅ Select All
+            </button>
+            <button class="btn btn-primary" onclick="addSelectedToSheets()" id="addSelectedBtn" style="padding: 8px 16px; font-size: 14px;" disabled>
+              📊 Add Selected to Sheets
+            </button>
+          </div>
+        </div>
+        <div id="scanHistory">
+          <table class="scan-table">
+            <thead>
+              <tr>
+                <th>Select</th>
+                <th>Time</th>
+                <th>Cert #</th>
+                <th>Card</th>
+                <th>Card #</th>
+                <th>Grade</th>
+              </tr>
+            </thead>
+            <tbody id="historyTableBody">
+              <tr><td colspan="6" style="text-align: center; color: #666;">No scans yet</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Application State
+    let lastCardData = null;
+    let scanHistory = [];
+
+    // Configuration - Auto-detect if we're running locally or on server
+    const API_BASE = window.location.protocol === 'file:' ? 'http://localhost:3000/api' : '/api';
+
+    /**
+     * Initialize the application
+     */
+    window.onload = function() {
+      focusInput();
+      loadCurrentConfig();
+      promptForSpreadsheetIfNeeded();
+      setupEventListeners();
+      loadScanHistory();
+    };
+
+    /**
+     * Setup event listeners for the application
+     */
+    function setupEventListeners() {
+      // Event delegation for checkbox clicks in the history table
+      document.addEventListener('change', function(event) {
+        if (event.target.type === 'checkbox' && event.target.closest('#historyTableBody')) {
+          updateAddSelectedButton();
+          
+          // Update "Select All" button text based on current state
+          const checkboxes = document.querySelectorAll('#historyTableBody input[type="checkbox"]:not([disabled])');
+          const selectAllBtn = document.getElementById('selectAllBtn');
+          const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+          selectAllBtn.textContent = allChecked ? 'Deselect All' : 'Select All';
+        }
+      });
+    }
+
+    /**
+     * Focus the barcode input field
+     */
+    function focusInput() {
+      setTimeout(() => {
+        document.getElementById('barcodeInput').focus();
+        document.getElementById('barcodeInput').select();
+      }, 100);
+    }
+
+    /**
+     * Setup barcode input event listener
+     */
+    document.getElementById('barcodeInput').addEventListener('keypress', function(e) {
+      if (e.key === 'Enter') {
+        lookupCard();
+      }
+    });
+
+    /**
+     * Main card lookup function
+     */
+    async function lookupCard() {
+      const certNumber = document.getElementById('barcodeInput').value.trim();
+      const statusDiv = document.getElementById('status');
+      const cardDataDiv = document.getElementById('cardData');
+      const button = document.getElementById('lookupButton');
+
+      // Validation
+      if (!certNumber) {
+        showStatus('Please scan or enter a certificate number', 'error');
+        focusInput();
+        return;
+      }
+
+      if (!/^\d+$/.test(certNumber)) {
+        showStatus(`Certificate number must contain only digits. Found: "${certNumber}"`, 'error');
+        focusInput();
+        return;
+      }
+
+      // Start lookup
+      button.disabled = true;
+      showStatus('🔄 Looking up PSA certificate...', 'loading');
+      cardDataDiv.innerHTML = '';
+
+      try {
+        const response = await fetch(`${API_BASE}/cert/${certNumber}`);
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+          lastCardData = data.PSACert;
+          displayCardData(data.PSACert);
+          addToHistory(certNumber, data.PSACert, 'success');
+          showStatus('✅ Card found! Ready to add to Google Sheets', 'success');
+          document.getElementById('barcodeInput').value = '';
+        } else {
+          throw new Error(data.error || 'Unknown error occurred');
+        }
+
+      } catch (error) {
+        console.error('Lookup error:', error);
+        showStatus(`❌ Error: ${error.message}`, 'error');
+        addToHistory(certNumber, null, 'error');
+      } finally {
+        button.disabled = false;
+        focusInput();
+      }
+    }
+
+    /**
+     * Display card data in a formatted panel
+     */
+    function displayCardData(cardData) {
+      const cardDataDiv = document.getElementById('cardData');
+      
+      const grade = cardData.GradeDescription || cardData.CardGrade || 'N/A';
+      const numericGrade = cardData.NumericGrade || extractNumericGrade(grade);
+      
+      cardDataDiv.innerHTML = `
+        <div class="card-data">
+          <h3>📋 PSA Certificate Details</h3>
+          <div class="data-grid">
+            <span class="data-label">Cert Number:</span>
+            <span class="data-value">${cardData.CertNumber || 'N/A'}</span>
+            <span class="data-label">Card Name:</span>
+            <span class="data-value">${cardData.Subject || 'N/A'}</span>
+            <span class="data-label">Card Number:</span>
+            <span class="data-value">${cardData.CardNumber || 'N/A'}</span>
+            <span class="data-label">Grade:</span>
+            <span class="data-value">${grade}</span>
+            <span class="data-label">Numeric Grade:</span>
+            <span class="data-value">${numericGrade}</span>
+            <span class="data-label">Set/Brand:</span>
+            <span class="data-value">${cardData.Brand || 'N/A'}</span>
+            <span class="data-label">Year:</span>
+            <span class="data-value">${cardData.Year || 'N/A'}</span>
+            <span class="data-label">Population:</span>
+            <span class="data-value">${cardData.TotalPopulation || 'N/A'}</span>
+          </div>
+          <button class="btn btn-primary btn-full" onclick="addToGoogleSheets()" style="margin-top: 20px;">
+            📊 Add to Google Sheets
+          </button>
+        </div>
+      `;
+    }
+
+    /**
+     * Add card to Google Sheets
+     */
+    async function addToGoogleSheets() {
+      if (!lastCardData) {
+        showStatus('No card data available', 'error');
+        return;
+      }
+
+      try {
+        showStatus('📊 Adding to Google Sheets...', 'loading');
+        
+        const response = await fetch('/api/add-to-sheets', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ psaData: lastCardData })
+        });
+
+        if (!response.ok) {
+          const errorText = await response.text();
+          console.error('Add to sheets failed:', response.status, errorText);
+          throw new Error(`Server error: ${response.status}`);
+        }
+
+        const result = await response.json();
+
+        if (result.success) {
+          showStatus('✅ Successfully added to Google Sheets!', 'success');
+        } else {
+          const errorMsg = result.error || 'Failed to add to Google Sheets';
+          console.error('Add to sheets error:', errorMsg);
+          throw new Error(errorMsg);
+        }
+
+      } catch (error) {
+        console.error('Google Sheets error:', error);
+        showStatus(`❌ Error: ${error.message}`, 'error');
+      }
+    }
+
+    /**
+     * Test with predefined card numbers
+     */
+    function testCard(certNumber) {
+      document.getElementById('barcodeInput').value = certNumber;
+      lookupCard();
+    }
+
+    /**
+     * Show status message
+     */
+    function showStatus(message, type = 'info') {
+      const statusDiv = document.getElementById('status');
+      statusDiv.innerHTML = `<div class="status ${type}">${message}</div>`;
+    }
+
+    /**
+     * Add entry to scan history (local only - no persistence)
+     */
+    async function addToHistory(certNumber, cardData, status) {
+      const timestamp = new Date().toLocaleTimeString();
+      const entry = {
+        certNumber,
+        cardData,
+        status,
+        timestamp
+      };
+      
+      // Add to local array only
+      scanHistory.unshift(entry);
+      if (scanHistory.length > 50) scanHistory.pop();
+      
+      updateHistoryDisplay();
+    }
+
+    /**
+     * Load scan history (disabled - no persistence)
+     */
+    async function loadScanHistory() {
+      // Scan history persistence disabled for reliability
+      console.log('Scan history persistence disabled');
+    }
+
+    /**
+     * Update scan history display with table format
+     */
+    function updateHistoryDisplay() {
+      const tableBody = document.getElementById('historyTableBody');
+      
+      if (scanHistory.length === 0) {
+        tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #666;">No scans yet</td></tr>';
+        return;
+      }
+      
+      tableBody.innerHTML = scanHistory.map((entry, index) => {
+        const cardData = entry.cardData;
+        const statusClass = entry.status === 'success' ? 'success' : 'error';
+        
+        if (entry.status === 'error' || !cardData) {
+          return `
+            <tr class="history-row ${statusClass}">
+              <td><input type="checkbox" value="${index}" ${entry.status === 'error' ? 'disabled' : ''} /></td>
+              <td>${entry.timestamp}</td>
+              <td>${entry.certNumber}</td>
+              <td colspan="3" style="color: #666; font-style: italic;">Card lookup failed</td>
+            </tr>
+          `;
+        }
+        
+        // Get numeric grade value, prioritizing NumericGrade field
+        let grade = cardData.NumericGrade || cardData.numericGrade;
+        if (!grade && cardData.Grade) {
+          const gradeMatch = cardData.Grade.toString().match(/\d+/);
+          grade = gradeMatch ? gradeMatch[0] : 'N/A';
+        }
+        grade = grade || 'N/A';
+        
+        return `
+          <tr class="history-row ${statusClass}">
+            <td><input type="checkbox" value="${index}" /></td>
+            <td>${entry.timestamp}</td>
+            <td>${entry.certNumber}</td>
+            <td>${cardData.Subject || cardData.CardName || 'Unknown'}</td>
+            <td>${cardData.CardNumber || 'N/A'}</td>
+            <td>${grade}</td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    /**
+     * Select or deselect all cards in the history table
+     */
+    function selectAllCards() {
+      const checkboxes = document.querySelectorAll('#historyTableBody input[type="checkbox"]:not([disabled])');
+      const selectAllBtn = document.getElementById('selectAllBtn');
+      const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+      
+      checkboxes.forEach(checkbox => {
+        checkbox.checked = !allChecked;
+      });
+      
+      selectAllBtn.textContent = allChecked ? 'Select All' : 'Deselect All';
+      updateAddSelectedButton();
+    }
+
+    /**
+     * Update the "Add Selected to Sheets" button state
+     */
+    function updateAddSelectedButton() {
+      const selectedCount = document.querySelectorAll('#historyTableBody input[type="checkbox"]:checked').length;
+      const addBtn = document.getElementById('addSelectedBtn');
+      
+      addBtn.disabled = selectedCount === 0;
+      addBtn.textContent = selectedCount > 0 ? `Add Selected (${selectedCount}) to Sheets` : 'Add Selected to Sheets';
+    }
+
+    /**
+     * Add selected cards to Google Sheets in batch
+     */
+    async function addSelectedToSheets() {
+      const selectedCheckboxes = document.querySelectorAll('#historyTableBody input[type="checkbox"]:checked');
+      const selectedIndices = Array.from(selectedCheckboxes).map(cb => parseInt(cb.value));
+      
+      if (selectedIndices.length === 0) {
+        showStatus('No cards selected for batch add', 'error');
+        return;
+      }
+      
+      const addBtn = document.getElementById('addSelectedBtn');
+      const originalText = addBtn.textContent;
+      addBtn.disabled = true;
+      addBtn.textContent = 'Adding cards...';
+      
+      let successCount = 0;
+      let errorCount = 0;
+      
+      showStatus(`Adding ${selectedIndices.length} cards to Google Sheets...`, 'info');
+      
+      for (const index of selectedIndices) {
+        const entry = scanHistory[index];
+        if (entry.status === 'success' && entry.cardData) {
+          try {
+            const response = await fetch('/api/add-to-sheets', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                psaData: entry.cardData
+              })
+            });
+            
+            if (response.ok) {
+              successCount++;
+              // Mark checkbox as processed by unchecking it
+              selectedCheckboxes[selectedIndices.indexOf(index)].checked = false;
+            } else {
+              errorCount++;
+              console.error(`Failed to add cert ${entry.certNumber}:`, await response.text());
+            }
+          } catch (error) {
+            errorCount++;
+            console.error(`Error adding cert ${entry.certNumber}:`, error);
+          }
+        }
+      }
+      
+      // Show final status
+      let statusMessage = '';
+      let statusType = 'info';
+      
+      if (successCount > 0 && errorCount === 0) {
+        statusMessage = `Successfully added ${successCount} card${successCount > 1 ? 's' : ''} to Google Sheets!`;
+        statusType = 'success';
+      } else if (successCount > 0 && errorCount > 0) {
+        statusMessage = `Added ${successCount} card${successCount > 1 ? 's' : ''} successfully, ${errorCount} failed`;
+        statusType = 'warning';
+      } else {
+        statusMessage = `Failed to add ${errorCount} card${errorCount > 1 ? 's' : ''}`;
+        statusType = 'error';
+      }
+      
+      showStatus(statusMessage, statusType);
+      
+      // Reset button
+      addBtn.disabled = false;
+      addBtn.textContent = originalText;
+      updateAddSelectedButton();
+    }
+
+    /**
+     * Load current spreadsheet configuration
+     */
+    async function loadCurrentConfig() {
+      try {
+        const response = await fetch(`${API_BASE}/status`);
+        const data = await response.json();
+        
+        if (response.ok && data.success) {
+          const googleSheets = data.services?.googleSheets || {};
+          
+          // Display the actual spreadsheet name instead of the ID
+          const spreadsheetDisplay = googleSheets.spreadsheetName || 
+                                   (googleSheets.spreadsheetId ? 'Connected' : 'Not configured');
+          
+          document.getElementById('currentSpreadsheetId').textContent = spreadsheetDisplay;
+          document.getElementById('currentSheetName').textContent = 
+            googleSheets.sheetName || 'Not configured';
+        }
+      } catch (error) {
+        console.error('Failed to load config:', error);
+        document.getElementById('currentSpreadsheetId').textContent = 'Error loading';
+        document.getElementById('currentSheetName').textContent = 'Error loading';
+      }
+    }
+
+    /**
+     * Prompt for spreadsheet URL if not configured
+     */
+    async function promptForSpreadsheetIfNeeded() {
+      // Wait for config to load first
+      await loadCurrentConfig();
+      
+      const currentDisplay = document.getElementById('currentSpreadsheetId').textContent;
+      if (currentDisplay === 'Not configured' || currentDisplay === 'Error loading') {
+        setTimeout(() => {
+          const url = prompt(`Welcome to PSA Card Scanner!
+
+Please paste your Google Sheets URL to get started:
+
+Example: https://docs.google.com/spreadsheets/d/1ABC...xyz/edit
+
+Make sure your sheet has "Anyone with the link can edit" permissions.`);
+          
+          if (url && url.trim()) {
+            document.getElementById('spreadsheetUrl').value = url;
+            updateSpreadsheetFromUrl();
+          }
+        }, 1000);
+      }
+    }
+
+    /**
+     * Show spreadsheet configuration panel
+     */
+    function showSpreadsheetConfig() {
+      const panel = document.getElementById('configPanel');
+      panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    }
+
+    /**
+     * Update spreadsheet configuration from URL
+     */
+    async function updateSpreadsheetFromUrl() {
+      const url = document.getElementById('spreadsheetUrl').value.trim();
+      
+      if (!url) {
+        showStatus('Please enter a Google Sheets URL', 'error');
+        return;
+      }
+
+      const spreadsheetId = extractSpreadsheetId(url);
+      if (!spreadsheetId) {
+        showStatus('Invalid Google Sheets URL format', 'error');
+        return;
+      }
+
+      try {
+        showStatus('📊 Updating spreadsheet configuration...', 'loading');
+        
+        const response = await fetch(`${API_BASE}/update-spreadsheet-config?id=${encodeURIComponent(spreadsheetId)}&sheet=Input%20Sheet`);
+        const result = await response.json();
+
+        if (response.ok && result.success) {
+          showStatus('✅ Spreadsheet configuration updated!', 'success');
+          loadCurrentConfig();
+          document.getElementById('configPanel').style.display = 'none';
+          document.getElementById('spreadsheetUrl').value = '';
+        } else {
+          throw new Error(result.error || 'Configuration update failed');
+        }
+
+      } catch (error) {
+        console.error('Config update error:', error);
+        showStatus(`❌ Error: ${error.message}`, 'error');
+      }
+    }
+
+    /**
+     * Extract spreadsheet ID from Google Sheets URL
+     */
+    function extractSpreadsheetId(url) {
+      const match = url.match(/\/spreadsheets\/d\/([a-zA-Z0-9-_]+)/);
+      return match ? match[1] : null;
+    }
+
+    /**
+     * Extract numeric grade from grade string
+     */
+    function extractNumericGrade(gradeString) {
+      if (!gradeString) return '';
+      const match = gradeString.match(/(\d+(?:\.\d+)?)$/);
+      return match ? match[1] : '';
+    }
+  </script>
+</body>
+</html>
