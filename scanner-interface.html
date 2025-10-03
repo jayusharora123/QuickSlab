@@ -363,7 +363,7 @@
           <label for="barcodeInput">PSA Certificate Number</label>
           <div style="display: flex; gap: 10px; align-items: center;">
             <input type="text" id="barcodeInput" placeholder="Enter or scan certificate number..." autofocus style="flex: 1;">
-            <button class="btn btn-secondary" onclick="startBarcodeScanner()" id="scannerButton" style="min-width: 150px;">
+            <button class="btn btn-secondary" onclick="testScanner()" id="scannerButton" style="min-width: 150px;">
               📷 Scan QR/Barcode
             </button>
           </div>
@@ -968,6 +968,13 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
       const video = document.getElementById('scanner-video');
       
       try {
+        // Check if ZXing library is loaded
+        if (typeof ZXing === 'undefined') {
+          showStatus('❌ Scanner library not loaded. Please refresh the page.', 'error');
+          console.error('ZXing library not loaded');
+          return;
+        }
+        
         // Show modal first
         modal.classList.add('active');
         showStatus('📷 Starting camera...', 'info');
@@ -992,10 +999,16 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
         
         // Get available video devices
         const videoInputDevices = await codeReader.listVideoInputDevices();
+        console.log('Available cameras:', videoInputDevices);
+        
+        if (videoInputDevices.length === 0) {
+          throw new Error('No camera devices found');
+        }
         
         // Try to find rear camera, fallback to first available
         let selectedDeviceId = videoInputDevices[0]?.deviceId;
         for (const device of videoInputDevices) {
+          console.log('Camera device:', device.label);
           if (device.label.toLowerCase().includes('back') || 
               device.label.toLowerCase().includes('rear') ||
               device.label.toLowerCase().includes('environment')) {
@@ -1004,27 +1017,14 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
           }
         }
         
-        // Configure camera constraints for better focus and quality
-        const constraints = {
-          video: {
-            deviceId: selectedDeviceId ? { exact: selectedDeviceId } : undefined,
-            facingMode: 'environment',
-            width: { ideal: 1280, min: 640 },
-            height: { ideal: 720, min: 480 },
-            focusMode: 'continuous',
-            focusDistance: { ideal: 0.3 }, // Focus at ~30cm for card scanning
-            zoom: { ideal: 1.5 }, // Slight zoom for better barcode reading
-            whiteBalanceMode: 'auto',
-            exposureMode: 'auto',
-            torch: false
-          }
-        };
+        console.log('Selected camera:', selectedDeviceId);
         
         // Start decoding with improved constraints
-        codeReader.decodeFromConstraints(constraints, video, (result, err) => {
+        await codeReader.decodeFromVideoDevice(selectedDeviceId, video, (result, err) => {
           // Store video track for torch control
           if (video.srcObject && !currentTrack) {
             currentTrack = video.srcObject.getVideoTracks()[0];
+            console.log('Video track obtained for torch control');
           }
           
           if (result) {
@@ -1096,7 +1096,8 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
           }
         });
         
-        showStatus('📷 Camera ready! Hold card 6-12 inches away', 'info');
+        showStatus('📷 Camera ready! Point at QR code or barcode', 'info');
+        console.log('Scanner started successfully');
         
         // Add helpful tips after a few seconds
         setTimeout(() => {
@@ -1107,7 +1108,7 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
         
       } catch (error) {
         console.error('Camera access error:', error);
-        showStatus('❌ Camera access failed. Please allow camera permissions and try again.', 'error');
+        showStatus(`❌ Camera failed: ${error.message}. Please allow camera permissions and try again.`, 'error');
         stopBarcodeScanner();
       }
     }
@@ -1183,7 +1184,27 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
     // Auto-focus input when page loads
     window.addEventListener('load', function() {
       document.getElementById('barcodeInput').focus();
+      
+      // Test if ZXing library loaded properly
+      setTimeout(() => {
+        if (typeof ZXing === 'undefined') {
+          console.error('ZXing library failed to load');
+          showStatus('⚠️ Scanner library loading... Please wait or refresh if button doesn\'t work.', 'info');
+        } else {
+          console.log('ZXing library loaded successfully');
+        }
+      }, 2000);
     });
+    
+    // Add a simple test function to debug scanner button
+    function testScanner() {
+      console.log('Scanner button clicked!');
+      if (typeof ZXing === 'undefined') {
+        alert('ZXing library not loaded. Please refresh the page.');
+        return;
+      }
+      startBarcodeScanner();
+    }
   </script>
 </body>
 </html>
