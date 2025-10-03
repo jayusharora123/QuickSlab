@@ -347,8 +347,8 @@
       }
     }
   </style>
-  <!-- ZXing Barcode Scanner Library (more reliable for mobile) -->
-  <script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
+  <!-- QR Code Scanner Library (simpler and more reliable) -->
+  <script src="https://cdn.jsdelivr.net/npm/qr-scanner@1.4.2/qr-scanner.umd.min.js"></script>
 </head>
 <body>
   <div class="container">
@@ -363,8 +363,8 @@
           <label for="barcodeInput">PSA Certificate Number</label>
           <div style="display: flex; gap: 10px; align-items: center;">
             <input type="text" id="barcodeInput" placeholder="Enter or scan certificate number..." autofocus style="flex: 1;">
-            <button class="btn btn-secondary" onclick="startBarcodeScanner()" id="scannerButton" style="min-width: 150px;">
-              📷 Scan QR/Barcode
+            <button class="btn btn-secondary" onclick="startQRScanner()" id="scannerButton" style="min-width: 120px;">
+              📷 Scan QR Code
             </button>
           </div>
         </div>
@@ -372,7 +372,7 @@
         <!-- Camera Scanner Modal -->
         <div id="scannerModal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.9); z-index: 1000; justify-content: center; align-items: center;">
           <div style="background: white; padding: 20px; border-radius: 10px; max-width: 90%; max-height: 90%; text-align: center;">
-            <h3>📷 Scan PSA QR Code or Barcode</h3>
+            <h3>📷 Scan PSA QR Code</h3>
             <div id="scanner-container" style="position: relative; width: 100%; max-width: 400px; margin: 0 auto;">
               <video id="scanner-video" style="width: 100%; height: auto; border-radius: 8px; background: #000;"></video>
               <div id="scan-line" style="position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: #4CAF50; animation: scan 2s linear infinite;"></div>
@@ -382,11 +382,11 @@
               </div>
             </div>
             <p style="margin: 15px 0; color: #666; font-size: 14px;">
-              Point at <strong>QR code or barcode</strong> on PSA card<br>
+              Point at the <strong>QR code</strong> on your PSA card<br>
               Hold card <strong>6-12 inches</strong> away and keep steady
             </p>
             <div style="display: flex; gap: 10px; justify-content: center;">
-              <button class="btn btn-warning" onclick="stopBarcodeScanner()" style="margin-top: 10px;">
+              <button class="btn btn-warning" onclick="stopQRScanner()" style="margin-top: 10px;">
                 ❌ Cancel
               </button>
             </div>
@@ -953,113 +953,56 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
       return match ? match[1] : '';
     }
 
-    // === BARCODE SCANNER FUNCTIONALITY ===
+    // === QR CODE SCANNER FUNCTIONALITY ===
     
-    let scannerStream = null;
-    let codeReader = null;
+    let qrScanner = null;
     let currentTrack = null;
     let torchEnabled = false;
     
     /**
-     * Start the barcode scanner using device camera
+     * Start the QR code scanner using device camera
      */
-    async function startBarcodeScanner() {
+    async function startQRScanner() {
       const modal = document.getElementById('scannerModal');
       const video = document.getElementById('scanner-video');
       
       try {
-        // Check if ZXing library is loaded
-        if (typeof ZXing === 'undefined') {
+        // Check if QrScanner library is loaded
+        if (typeof QrScanner === 'undefined') {
           showStatus('❌ Scanner library not loaded. Please refresh the page.', 'error');
-          console.error('ZXing library not loaded');
+          console.error('QrScanner library not loaded');
           return;
         }
         
         // Show modal first
         modal.classList.add('active');
-        showStatus('📷 Starting camera...', 'info');
+        showStatus('📷 Starting QR scanner...', 'info');
         
-        // Initialize ZXing code reader with hints for better performance
-        codeReader = new ZXing.BrowserMultiFormatReader();
-        
-        console.log('ZXing reader created successfully');
-        
-        // Get available video devices
-        const videoInputDevices = await codeReader.listVideoInputDevices();
-        console.log('Available cameras:', videoInputDevices);
-        
-        if (videoInputDevices.length === 0) {
-          throw new Error('No camera devices found');
-        }
-        
-        // Try to find rear camera, fallback to first available
-        let selectedDeviceId = videoInputDevices[0]?.deviceId;
-        for (const device of videoInputDevices) {
-          console.log('Camera device:', device.label);
-          if (device.label.toLowerCase().includes('back') || 
-              device.label.toLowerCase().includes('rear') ||
-              device.label.toLowerCase().includes('environment')) {
-            selectedDeviceId = device.deviceId;
-            break;
-          }
-        }
-        
-        console.log('Selected camera:', selectedDeviceId);
-        
-        // Start decoding with improved constraints
-        await codeReader.decodeFromVideoDevice(selectedDeviceId, video, (result, err) => {
-          // Store video track for torch control
-          if (video.srcObject && !currentTrack) {
-            currentTrack = video.srcObject.getVideoTracks()[0];
-            console.log('Video track obtained for torch control');
-          }
-          
-          if (result) {
-            const code = result.getText();
-            console.log('Code detected:', code);
+        // Initialize QR Scanner (much simpler than ZXing)
+        qrScanner = new QrScanner(
+          video,
+          result => {
+            console.log('QR Code detected:', result.data);
             
             let certNumber = null;
+            const qrContent = result.data;
             
-            // Try to determine if it's a QR code by content characteristics
-            // QR codes often contain URLs or longer strings
-            const isLikelyQR = code.length > 20 || code.includes('http') || code.includes('://');
-            
-            if (isLikelyQR) {
-              console.log('Likely QR Code detected:', code);
-              
-              // Try to extract certificate number from QR code content
-              if (code.match(/^\d{8,12}$/)) {
-                // Direct cert number
-                certNumber = code;
-              } else if (code.includes('psacard.com') || code.includes('psa')) {
-                // Extract from URL
-                const urlMatch = code.match(/(?:cert\/|certificate[=\/])(\d{8,12})/i);
-                if (urlMatch) {
-                  certNumber = urlMatch[1];
-                }
-              } else {
-                // Try to find any 8-12 digit number in the QR content
-                const numberMatch = code.match(/\b(\d{8,12})\b/);
-                if (numberMatch) {
-                  certNumber = numberMatch[1];
-                }
+            // Extract PSA certificate number from QR content
+            if (qrContent.match(/^\d{8,12}$/)) {
+              // Direct cert number
+              certNumber = qrContent;
+            } else if (qrContent.includes('psacard.com') || qrContent.includes('psa')) {
+              // Extract from PSA URL
+              const urlMatch = qrContent.match(/(?:cert\/|certificate[=\/])(\d{8,12})/i);
+              if (urlMatch) {
+                certNumber = urlMatch[1];
               }
-              
-              if (certNumber) {
-                showStatus(`📱 QR Code found PSA Certificate ${certNumber}!`, 'success');
-              } else {
-                showStatus('📷 QR Code detected but no PSA cert number found. Keep scanning...', 'info');
-                return; // Continue scanning
-              }
-            } 
-            // Handle what looks like traditional barcodes (shorter, numeric)
-            else if (code && code.match(/^\d{8,12}$/)) {
-              certNumber = code;
-              showStatus(`📱 Barcode scanned: PSA Certificate ${certNumber}!`, 'success');
             } else {
-              console.log('Invalid code format, continuing scan...');
-              showStatus('📷 Keep scanning... Looking for PSA certificate number', 'info');
-              return; // Continue scanning
+              // Try to find any 8-12 digit number in the QR content
+              const numberMatch = qrContent.match(/\b(\d{8,12})\b/);
+              if (numberMatch) {
+                certNumber = numberMatch[1];
+              }
             }
             
             if (certNumber) {
@@ -1067,47 +1010,64 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
               document.getElementById('barcodeInput').value = certNumber;
               
               // Stop scanner and close modal
-              stopBarcodeScanner();
+              stopQRScanner();
+              
+              // Show success message
+              showStatus(`📱 PSA Certificate ${certNumber} scanned!`, 'success');
               
               // Auto-trigger lookup after a short delay
               setTimeout(() => {
                 lookupCard();
               }, 1000);
+            } else {
+              showStatus('📷 QR Code found but no PSA cert number. Keep scanning...', 'info');
             }
+          },
+          {
+            preferredCamera: 'environment', // Use rear camera
+            highlightScanRegion: true,
+            highlightCodeOutline: true,
+            maxScansPerSecond: 5,
           }
-          
-          if (err && !(err instanceof ZXing.NotFoundException)) {
-            console.error('Scanner error:', err);
-          }
-        });
+        );
         
-        showStatus('📷 Camera ready! Point at QR code or barcode', 'info');
-        console.log('Scanner started successfully');
+        // Start scanning
+        await qrScanner.start();
+        
+        // Store video track for torch control
+        if (video.srcObject) {
+          currentTrack = video.srcObject.getVideoTracks()[0];
+          console.log('Video track obtained for torch control');
+        }
+        
+        showStatus('📷 QR scanner ready! Point at PSA QR code', 'info');
+        console.log('QR Scanner started successfully');
         
         // Add helpful tips after a few seconds
         setTimeout(() => {
           if (modal.classList.contains('active')) {
-            showStatus('💡 Tip: Keep card steady, ensure good lighting', 'info');
+            showStatus('💡 Tip: Keep QR code centered and steady', 'info');
           }
         }, 5000);
         
       } catch (error) {
-        console.error('Camera access error:', error);
-        showStatus(`❌ Camera failed: ${error.message}. Please allow camera permissions and try again.`, 'error');
-        stopBarcodeScanner();
+        console.error('QR Scanner error:', error);
+        showStatus(`❌ QR Scanner failed: ${error.message}. Please allow camera permissions.`, 'error');
+        stopQRScanner();
       }
     }
     
     /**
-     * Stop the barcode scanner and close modal
+     * Stop the QR scanner and close modal
      */
-    function stopBarcodeScanner() {
+    function stopQRScanner() {
       const modal = document.getElementById('scannerModal');
       
-      // Stop ZXing code reader
-      if (codeReader) {
-        codeReader.reset();
-        codeReader = null;
+      // Stop QR scanner
+      if (qrScanner) {
+        qrScanner.stop();
+        qrScanner.destroy();
+        qrScanner = null;
       }
       
       // Turn off torch if enabled
@@ -1156,13 +1116,13 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
     document.addEventListener('keydown', function(event) {
       // ESC key to close scanner
       if (event.key === 'Escape') {
-        stopBarcodeScanner();
+        stopQRScanner();
       }
       
       // Ctrl/Cmd + S to open scanner
       if ((event.ctrlKey || event.metaKey) && event.key === 's') {
         event.preventDefault();
-        startBarcodeScanner();
+        startQRScanner();
       }
     });
     
@@ -1170,26 +1130,16 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
     window.addEventListener('load', function() {
       document.getElementById('barcodeInput').focus();
       
-      // Test if ZXing library loaded properly
+      // Test if QrScanner library loaded properly
       setTimeout(() => {
-        if (typeof ZXing === 'undefined') {
-          console.error('ZXing library failed to load');
-          showStatus('⚠️ Scanner library loading... Please wait or refresh if button doesn\'t work.', 'info');
+        if (typeof QrScanner === 'undefined') {
+          console.error('QrScanner library failed to load');
+          showStatus('⚠️ QR Scanner library loading... Please refresh if button doesn\'t work.', 'info');
         } else {
-          console.log('ZXing library loaded successfully');
+          console.log('QrScanner library loaded successfully');
         }
       }, 2000);
     });
-    
-    // Add a simple test function to debug scanner button
-    function testScanner() {
-      console.log('Scanner button clicked!');
-      if (typeof ZXing === 'undefined') {
-        alert('ZXing library not loaded. Please refresh the page.');
-        return;
-      }
-      startBarcodeScanner();
-    }
   </script>
 </body>
 </html>
