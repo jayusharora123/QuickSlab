@@ -378,12 +378,14 @@
               <div id="scan-line" style="position: absolute; top: 50%; left: 0; right: 0; height: 2px; background: #4CAF50; animation: scan 2s linear infinite;"></div>
               <!-- Scanner Controls -->
               <div style="position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); display: flex; gap: 10px;">
+                <button id="zoomOutButton" onclick="adjustZoom(-0.5)" style="background: rgba(0,0,0,0.7); color: white; border: none; border-radius: 50%; width: 40px; height: 40px; font-size: 16px;">-</button>
                 <button id="torchButton" onclick="toggleTorch()" style="background: rgba(0,0,0,0.7); color: white; border: none; border-radius: 50%; width: 40px; height: 40px; font-size: 18px;">💡</button>
+                <button id="zoomInButton" onclick="adjustZoom(0.5)" style="background: rgba(0,0,0,0.7); color: white; border: none; border-radius: 50%; width: 40px; height: 40px; font-size: 16px;">+</button>
               </div>
             </div>
             <p style="margin: 15px 0; color: #666; font-size: 14px;">
               Point at the <strong>QR code</strong> on your PSA card<br>
-              Hold card <strong>6-12 inches</strong> away and keep steady
+              <strong>Get close (3-6 inches)</strong> and use zoom buttons if needed
             </p>
             <div style="display: flex; gap: 10px; justify-content: center;">
               <button class="btn btn-warning" onclick="stopQRScanner()" style="margin-top: 10px;">
@@ -958,6 +960,7 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
     let qrScanner = null;
     let currentTrack = null;
     let torchEnabled = false;
+    let currentZoom = 1.0;
     
     /**
      * Start the QR code scanner using device camera
@@ -1027,17 +1030,55 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
             preferredCamera: 'environment', // Use rear camera
             highlightScanRegion: true,
             highlightCodeOutline: true,
-            maxScansPerSecond: 5,
+            maxScansPerSecond: 10, // Increased scan rate
+            returnDetailedScanResult: false,
+            // Optimized for small QR codes
+            calculateScanRegion: (video) => {
+              const smallerRegion = Math.min(video.videoWidth, video.videoHeight) * 0.8;
+              return {
+                x: (video.videoWidth - smallerRegion) / 2,
+                y: (video.videoHeight - smallerRegion) / 2,
+                width: smallerRegion,
+                height: smallerRegion,
+              };
+            }
           }
         );
         
-        // Start scanning
+        // Start scanning with camera optimized for close-up QR codes
         await qrScanner.start();
         
-        // Store video track for torch control
+        // Get video track and apply close-up optimized constraints
         if (video.srcObject) {
           currentTrack = video.srcObject.getVideoTracks()[0];
-          console.log('Video track obtained for torch control');
+          console.log('Video track obtained');
+          
+          // Apply constraints optimized for small QR code scanning
+          try {
+            await currentTrack.applyConstraints({
+              focusMode: 'continuous',
+              focusDistance: { ideal: 0.1 }, // Very close focus for small QR codes
+              zoom: { ideal: 2.0 }, // Start with 2x zoom for small codes
+              whiteBalanceMode: 'auto',
+              exposureMode: 'auto',
+              brightness: { ideal: 0.1 }, // Slightly brighter for better contrast
+              contrast: { ideal: 1.2 }, // Higher contrast for QR codes
+              saturation: { ideal: 0.8 } // Lower saturation for better QR reading
+            });
+            currentZoom = 2.0;
+            console.log('Applied close-up scanning constraints');
+          } catch (constraintError) {
+            console.log('Some camera constraints not supported:', constraintError);
+            // Fallback: try basic zoom only
+            try {
+              await currentTrack.applyConstraints({
+                zoom: { ideal: 2.0 }
+              });
+              currentZoom = 2.0;
+            } catch (zoomError) {
+              console.log('Zoom not supported on this device');
+            }
+          }
         }
         
         showStatus('📷 QR scanner ready! Point at PSA QR code', 'info');
@@ -1107,6 +1148,52 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
         }
       } catch (error) {
         console.log('Torch not supported:', error);
+      }
+    }
+    
+    /**
+     * Adjust camera zoom for better QR code scanning
+     */
+    async function adjustZoom(delta) {
+      if (!currentTrack) return;
+      
+      try {
+        const capabilities = currentTrack.getCapabilities();
+        if (capabilities.zoom) {
+          const newZoom = Math.max(capabilities.zoom.min, 
+                          Math.min(capabilities.zoom.max, currentZoom + delta));
+          
+          await currentTrack.applyConstraints({
+            zoom: { exact: newZoom }
+          });
+          
+          currentZoom = newZoom;
+          console.log('Zoom adjusted to:', newZoom);
+          
+          // Update button appearance based on zoom level
+          const zoomInBtn = document.getElementById('zoomInButton');
+          const zoomOutBtn = document.getElementById('zoomOutButton');
+          
+          // Show zoom level feedback
+          if (newZoom >= capabilities.zoom.max) {
+            zoomInBtn.style.opacity = '0.5';
+          } else {
+            zoomInBtn.style.opacity = '1';
+          }
+          
+          if (newZoom <= capabilities.zoom.min) {
+            zoomOutBtn.style.opacity = '0.5';
+          } else {
+            zoomOutBtn.style.opacity = '1';
+          }
+          
+          showStatus(`🔍 Zoom: ${newZoom.toFixed(1)}x`, 'info');
+        } else {
+          showStatus('📷 Zoom not supported on this device', 'info');
+        }
+      } catch (error) {
+        console.log('Zoom adjustment failed:', error);
+        showStatus('📷 Zoom adjustment failed', 'info');
       }
     }
     
