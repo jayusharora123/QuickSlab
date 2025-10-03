@@ -26,10 +26,10 @@ app.use(cors({
 app.use(express.json());
 app.use(express.static(__dirname));
 
-// Initialize services
+// Initialize services with default spreadsheet
 const psaService = new PSAService(process.env.PSA_API_KEY);
 const googleSheetsService = new GoogleSheetsService({
-  spreadsheetId: process.env.GOOGLE_SPREADSHEET_ID,
+  spreadsheetId: process.env.GOOGLE_SPREADSHEET_ID || '12k3qKOIg_obeDUsXEEzoawMEAcfiWBSN5zj6ftaYQVA',
   sheetName: process.env.GOOGLE_SHEET_NAME || 'Input Sheet',
   serviceAccountKeyPath: process.env.GOOGLE_SERVICE_ACCOUNT_KEY
 });
