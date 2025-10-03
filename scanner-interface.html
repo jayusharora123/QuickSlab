@@ -347,8 +347,8 @@
       }
     }
   </style>
-  <!-- QuaggaJS for Barcode Scanning -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/quagga/0.12.1/quagga.min.js"></script>
+  <!-- ZXing Barcode Scanner Library (more reliable for mobile) -->
+  <script src="https://unpkg.com/@zxing/library@latest/umd/index.min.js"></script>
 </head>
 <body>
   <div class="container">
@@ -949,6 +949,7 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
     // === BARCODE SCANNER FUNCTIONALITY ===
     
     let scannerStream = null;
+    let codeReader = null;
     
     /**
      * Start the barcode scanner using device camera
@@ -956,71 +957,33 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
     async function startBarcodeScanner() {
       const modal = document.getElementById('scannerModal');
       const video = document.getElementById('scanner-video');
-      const container = document.getElementById('scanner-container');
       
       try {
         // Show modal first
         modal.classList.add('active');
+        showStatus('📷 Starting camera...', 'info');
         
-        // Request camera access
-        scannerStream = await navigator.mediaDevices.getUserMedia({ 
-          video: { 
-            facingMode: 'environment', // Use rear camera on mobile
-            width: { ideal: 640 },
-            height: { ideal: 480 }
-          } 
-        });
+        // Initialize ZXing code reader
+        codeReader = new ZXing.BrowserMultiFormatReader();
         
-        // Set video source and play
-        video.srcObject = scannerStream;
-        video.play();
+        // Get available video devices
+        const videoInputDevices = await codeReader.listVideoInputDevices();
         
-        // Wait for video to be ready
-        video.onloadedmetadata = function() {
-          // Initialize Quagga barcode scanner
-          Quagga.init({
-            inputStream: {
-              name: "Live",
-              type: "LiveStream",
-              target: container,
-              constraints: {
-                width: { min: 640 },
-                height: { min: 480 },
-                facingMode: "environment",
-                aspectRatio: { min: 1, max: 2 }
-              }
-            },
-            locator: {
-              patchSize: "medium",
-              halfSample: true
-            },
-            numOfWorkers: 2,
-            decoder: {
-              readers: [
-                "code_128_reader",
-                "ean_reader",
-                "ean_8_reader",
-                "code_39_reader",
-                "upc_reader",
-                "upc_e_reader"
-              ]
-            },
-            locate: true
-          }, function(err) {
-            if (err) {
-              console.error('Quagga initialization failed:', err);
-              showStatus('❌ Camera scanner failed to start', 'error');
-              stopBarcodeScanner();
-              return;
-            }
-            
-            console.log('Barcode scanner initialized successfully');
-            Quagga.start();
-          });
-          
-          // Listen for successful barcode detection
-          Quagga.onDetected(function(result) {
-            const code = result.codeResult.code;
+        // Try to find rear camera, fallback to first available
+        let selectedDeviceId = videoInputDevices[0]?.deviceId;
+        for (const device of videoInputDevices) {
+          if (device.label.toLowerCase().includes('back') || 
+              device.label.toLowerCase().includes('rear') ||
+              device.label.toLowerCase().includes('environment')) {
+            selectedDeviceId = device.deviceId;
+            break;
+          }
+        }
+        
+        // Start decoding from video device
+        codeReader.decodeFromVideoDevice(selectedDeviceId, video, (result, err) => {
+          if (result) {
+            const code = result.getText();
             console.log('Barcode detected:', code);
             
             // Fill the input field with scanned code
@@ -1036,12 +999,18 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
             setTimeout(() => {
               lookupCard();
             }, 1000);
-          });
-        };
+          }
+          
+          if (err && !(err instanceof ZXing.NotFoundException)) {
+            console.error('Scanner error:', err);
+          }
+        });
+        
+        showStatus('📷 Camera ready! Point at barcode', 'info');
         
       } catch (error) {
         console.error('Camera access error:', error);
-        showStatus('❌ Camera access denied. Please allow camera permissions and try again.', 'error');
+        showStatus('❌ Camera access failed. Please allow camera permissions and try again.', 'error');
         stopBarcodeScanner();
       }
     }
@@ -1052,20 +1021,17 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
     function stopBarcodeScanner() {
       const modal = document.getElementById('scannerModal');
       
-      // Stop Quagga scanner
-      if (typeof Quagga !== 'undefined') {
-        Quagga.stop();
-        Quagga.offDetected();
-      }
-      
-      // Stop camera stream
-      if (scannerStream) {
-        scannerStream.getTracks().forEach(track => track.stop());
-        scannerStream = null;
+      // Stop ZXing code reader
+      if (codeReader) {
+        codeReader.reset();
+        codeReader = null;
       }
       
       // Hide modal
       modal.classList.remove('active');
+      
+      // Clear status
+      showStatus('', 'info');
     }
     
     /**
