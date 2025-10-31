@@ -789,7 +789,15 @@
         const result = await response.json();
 
         if (result.success) {
-          showStatus('✅ Successfully added to Google Sheets!', 'success');
+          const sheetUrl = result.spreadsheetId
+            ? `https://docs.google.com/spreadsheets/d/${result.spreadsheetId}/edit`
+            : null;
+          const details = [
+            result.sheetName ? `Sheet: ${result.sheetName}` : null,
+            result.updatedRange ? `Range: ${result.updatedRange}` : null
+          ].filter(Boolean).join(' • ');
+          const linkHtml = sheetUrl ? ` <a href="${sheetUrl}" target="_blank" rel="noopener">Open Sheet</a>` : '';
+          showStatus(`✅ Successfully added to Google Sheets! ${details}${linkHtml ? ' • ' + linkHtml : ''}`, 'success');
         } else {
           const errorMsg = result.error || 'Failed to add to Google Sheets';
           console.error('Add to sheets error:', errorMsg);

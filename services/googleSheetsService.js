@@ -158,6 +158,8 @@ class GoogleSheetsService {
         updatedRange: appendResult.data.updates?.updatedRange,
         updatedRows: appendResult.data.updates?.updatedRows || 1,
         rowData: valuesRow,
+        sheetName: this.sheetName,
+        spreadsheetId: this.spreadsheetId,
         message: `Successfully added ${sheetsData.Subject || 'card'} to Google Sheets`
       };
 
