@@ -91,39 +91,72 @@ class GoogleSheetsService {
 
     try {
       const sheetsData = psaData.GoogleSheetsData;
-      
-      // Find the first empty row in the table area to insert data
-      const tableStartRow = 4; // Row 4 (after headers and examples in rows 1-3)
-      const targetRow = await this.findNextAvailableRow(tableStartRow);
-      
-      // Prepare the row data according to column mapping (no row number needed)
-      const rowData = [
-        sheetsData.Subject,         // Column A: Card Name
-        sheetsData.CardNumber,      // Column B: Card Number
-        sheetsData.Status,          // Column C: Condition (Graded)
-        sheetsData.Authenticated,   // Column D: Graded? (Yes)
-        sheetsData.Company,         // Column E: Company (PSA)
-        sheetsData.Grade,          // Column F: Grade (Numeric)
-        sheetsData.CertNumber      // Column G: Certification Number
-      ];
 
-      // Insert the data at the specific row (columns A to G)
-      const updateResult = await this.sheets.spreadsheets.values.update({
+      // Build row using dynamic header mapping so we can adapt to new layouts
+      const headerMap = await this.getHeaderMap();
+
+      // Canonical field names we support from PSA data
+      const fieldToValue = {
+        cardName: sheetsData.Subject || '',
+        cardNumber: sheetsData.CardNumber || '',
+        condition: sheetsData.Status || 'Graded',
+        gradedFlag: sheetsData.Authenticated || 'Y',
+        company: sheetsData.Company || 'PSA',
+        grade: sheetsData.Grade || '',
+        certNumber: sheetsData.CertNumber || ''
+      };
+
+      // Prepare row aligned to headers if found, else fallback to legacy A:G order
+      let valuesRow = [];
+      if (headerMap && headerMap.headers && headerMap.indexByCanonical) {
+        // Initialize array to header length
+        valuesRow = new Array(headerMap.headers.length).fill('');
+
+        // Fill only known columns if present
+        const setIfPresent = (canonical, value) => {
+          if (canonical in headerMap.indexByCanonical) {
+            const idx = headerMap.indexByCanonical[canonical];
+            valuesRow[idx] = value;
+          }
+        };
+
+        setIfPresent('cardName', fieldToValue.cardName);
+        setIfPresent('cardNumber', fieldToValue.cardNumber);
+        setIfPresent('condition', fieldToValue.condition);
+        setIfPresent('gradedFlag', fieldToValue.gradedFlag);
+        setIfPresent('company', fieldToValue.company);
+        setIfPresent('grade', fieldToValue.grade);
+        setIfPresent('certNumber', fieldToValue.certNumber);
+      } else {
+        // Fallback to legacy 7-column layout (A:G)
+        valuesRow = [
+          fieldToValue.cardName,
+          fieldToValue.cardNumber,
+          fieldToValue.condition,
+          fieldToValue.gradedFlag,
+          fieldToValue.company,
+          fieldToValue.grade,
+          fieldToValue.certNumber
+        ];
+      }
+
+      // Use append to avoid overwriting and eliminate 50-row limit issues
+      const appendResult = await this.sheets.spreadsheets.values.append({
         spreadsheetId: this.spreadsheetId,
-        range: `${this.sheetName}!A${targetRow}:G${targetRow}`,
-        valueInputOption: 'USER_ENTERED', // Process formulas
+        range: `${this.sheetName}!A:ZZ`,
+        valueInputOption: 'USER_ENTERED',
+        insertDataOption: 'INSERT_ROWS',
         resource: {
-          values: [rowData]
+          values: [valuesRow]
         }
       });
 
       return {
         success: true,
-        updatedRange: updateResult.data.updatedRange,
-        updatedRows: 1,
-        targetRow: targetRow,
-        rowData: rowData,
-        message: `Successfully added ${psaData.Subject || 'card'} to Google Sheets at row ${targetRow}`
+        updatedRange: appendResult.data.updates?.updatedRange,
+        updatedRows: appendResult.data.updates?.updatedRows || 1,
+        rowData: valuesRow,
+        message: `Successfully added ${sheetsData.Subject || 'card'} to Google Sheets`
       };
 
     } catch (error) {
@@ -143,7 +176,8 @@ class GoogleSheetsService {
    * @returns {Promise<number>} - Next available row number
    */
   async findNextAvailableRow(startRow) {
-    const tableEndRow = 50; // Reasonable limit for table area
+    // Legacy helper kept for compatibility; prefer append() instead of update()
+    const tableEndRow = 5000; // Increased limit to avoid early cutoffs
     
     try {
       // Get existing data to find first empty row
@@ -191,7 +225,7 @@ class GoogleSheetsService {
    */
   getStatus() {
     return {
-      configured: !!(this.spreadsheetId && this.serviceAccountKeyPath),
+      configured: !!(this.spreadsheetId && (this.serviceAccountKeyPath || process.env.GOOGLE_SERVICE_ACCOUNT_JSON)),
       initialized: !!this.sheets,
       spreadsheetId: this.spreadsheetId,
       sheetName: this.sheetName,
@@ -287,7 +321,7 @@ class GoogleSheetsService {
     try {
       // Check if Scan History sheet exists
       const spreadsheetInfo = await this.getSpreadsheetInfo();
-      const historySheetExists = spreadsheetInfo.sheets.some(sheet => sheet.properties.title === historySheetName);
+      const historySheetExists = spreadsheetInfo.sheets.some(title => title === historySheetName);
       
       if (!historySheetExists) {
         return []; // No history yet
@@ -343,7 +377,7 @@ class GoogleSheetsService {
   async ensureScanHistorySheet(sheetName) {
     try {
       const spreadsheetInfo = await this.getSpreadsheetInfo();
-      const sheetExists = spreadsheetInfo.sheets.some(sheet => sheet.properties.title === sheetName);
+      const sheetExists = spreadsheetInfo.sheets.some(title => title === sheetName);
       
       if (!sheetExists) {
         // Create the sheet
@@ -373,6 +407,73 @@ class GoogleSheetsService {
     } catch (error) {
       console.error('Failed to ensure scan history sheet:', error.message);
       // Don't throw here - we want the app to continue working even if sheet creation fails
+    }
+  }
+
+  /**
+   * Reads header row and builds a mapping from canonical field names to column indices.
+   * Adapts to different sheet layouts.
+   * @returns {Promise<{headers: string[], indexByCanonical: Object}>}
+   */
+  async getHeaderMap() {
+    if (!this.sheets) {
+      throw new Error('Google Sheets not initialized. Call initialize() first.');
+    }
+
+    try {
+      // Read first 10 rows to detect which row contains headers
+      const resp = await this.sheets.spreadsheets.values.get({
+        spreadsheetId: this.spreadsheetId,
+        range: `${this.sheetName}!A1:ZZ10`
+      });
+
+      const rows = resp.data.values || [];
+      if (!rows.length) return null;
+
+      // Normalize header text for matching
+      const norm = (s) => (s || '').toString().trim().toLowerCase();
+
+      // Map possible header names to canonical fields we support
+      const candidates = [
+        { canonical: 'cardName', names: ['card name', 'name', 'subject', 'title'] },
+        { canonical: 'cardNumber', names: ['card #', 'card number', 'number', 'no', '#'] },
+        { canonical: 'condition', names: ['condition', 'status', 'graded status'] },
+        { canonical: 'gradedFlag', names: ['graded?', 'authenticated', 'graded'] },
+        { canonical: 'company', names: ['company', 'grading company', 'grader'] },
+        { canonical: 'grade', names: ['grade', 'numeric grade', 'grade (num)'] },
+        { canonical: 'certNumber', names: ['cert', 'cert #', 'cert number', 'certification number'] }
+      ];
+
+      // Score each row by how many candidate headers it matches; pick the best
+      let best = { idx: -1, score: -1, headers: [] };
+      rows.forEach((row, rIdx) => {
+        let score = 0;
+        for (const cell of row) {
+          const hNorm = norm(cell);
+          if (candidates.some(c => c.names.some(n => hNorm === n))) score++;
+        }
+        if (score > best.score) best = { idx: rIdx, score, headers: row };
+      });
+
+      const headers = best.headers || [];
+      if (!headers.length) return null;
+
+      const indexByCanonical = {};
+      headers.forEach((h, idx) => {
+        const hNorm = norm(h);
+        for (const c of candidates) {
+          if (c.names.some(n => hNorm === n)) {
+            if (!(c.canonical in indexByCanonical)) {
+              indexByCanonical[c.canonical] = idx;
+            }
+          }
+        }
+      });
+
+      return { headers, indexByCanonical };
+    } catch (e) {
+      // On any error, return null so caller can fallback to legacy order
+      return null;
     }
   }
 }
