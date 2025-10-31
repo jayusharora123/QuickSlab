@@ -90,6 +90,8 @@ class GoogleSheetsService {
     }
 
     try {
+      // Ensure we're targeting a valid sheet tab; fallback to first tab if configured name doesn't exist
+      await this.ensureActiveSheet();
       const sheetsData = psaData.GoogleSheetsData;
 
       // Build row using dynamic header mapping so we can adapt to new layouts
@@ -407,6 +409,21 @@ class GoogleSheetsService {
     } catch (error) {
       console.error('Failed to ensure scan history sheet:', error.message);
       // Don't throw here - we want the app to continue working even if sheet creation fails
+    }
+  }
+
+  /**
+   * Ensures the configured sheetName exists; if not, fallback to the first sheet in the spreadsheet.
+   */
+  async ensureActiveSheet() {
+    const info = await this.getSpreadsheetInfo();
+    if (!info || !Array.isArray(info.sheets) || info.sheets.length === 0) {
+      throw new Error('Spreadsheet has no sheets');
+    }
+    const exists = info.sheets.includes(this.sheetName);
+    if (!exists) {
+      // Fallback to the first tab
+      this.sheetName = info.sheets[0];
     }
   }
 

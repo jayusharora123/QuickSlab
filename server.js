@@ -161,7 +161,8 @@ app.get('/api/status', async (req, res) => {
     // Enhance Google Sheets status with spreadsheet name
     const enhancedGoogleSheetsStatus = {
       ...googleSheetsStatus,
-      spreadsheetName: spreadsheetInfo?.title || null
+      spreadsheetName: spreadsheetInfo?.title || null,
+      sheetNames: spreadsheetInfo?.sheets || null
     };
     
     res.json({
