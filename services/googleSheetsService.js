@@ -11,6 +11,7 @@ class GoogleSheetsService {
     this.serviceAccountKeyPath = config.serviceAccountKeyPath;
     this.auth = null;
     this.sheets = null;
+    this._sheetIdCache = {}; // cache for sheetName -> sheetId
   }
 
   /**
@@ -90,12 +91,12 @@ class GoogleSheetsService {
     }
 
     try {
-      // Ensure we're targeting a valid sheet tab; fallback to first tab if configured name doesn't exist
-      await this.ensureActiveSheet();
+  // Ensure we're targeting the intended tab; enforce existence for reliability
+  await this.ensureActiveSheet(true);
       const sheetsData = psaData.GoogleSheetsData;
 
-      // Build row using dynamic header mapping so we can adapt to new layouts
-      const headerMap = await this.getHeaderMap();
+  // Build row using dynamic header mapping so we can adapt to new layouts
+  const headerMap = await this.getHeaderMap();
 
       // Canonical field names we support from PSA data
       const fieldToValue = {
@@ -142,16 +143,34 @@ class GoogleSheetsService {
         ];
       }
 
-      // Use append to avoid overwriting and eliminate 50-row limit issues
+      // Determine the table range to append within the visible table (keep using the table)
+      // If headers were detected, anchor the append to the header row across header columns.
+      // This makes Sheets append inside the table instead of outside of it.
+      let targetRange = `${this.sheetName}!A:ZZ`;
+      if (headerMap && headerMap.headers && headerMap.headerRow) {
+        const lastColIdx = Math.max(0, headerMap.headers.length - 1);
+        const lastColLetter = this.columnIndexToLetter(lastColIdx);
+        targetRange = `${this.sheetName}!A${headerMap.headerRow}:${lastColLetter}${headerMap.headerRow}`;
+      }
+
+      // Use append to avoid overwriting and eliminate row limit issues
       const appendResult = await this.sheets.spreadsheets.values.append({
         spreadsheetId: this.spreadsheetId,
-        range: `${this.sheetName}!A:ZZ`,
+        range: targetRange,
         valueInputOption: 'USER_ENTERED',
         insertDataOption: 'INSERT_ROWS',
         resource: {
           values: [valuesRow]
         }
       });
+
+      // Best effort: copy formatting and data validation from a template row to the newly added row
+      try {
+        await this.applyFormattingAndValidation(headerMap, appendResult.data.updates?.updatedRange);
+      } catch (fmtErr) {
+        // Non-fatal; log and continue
+        console.warn('Formatting/validation copy skipped:', fmtErr.message);
+      }
 
       return {
         success: true,
@@ -417,15 +436,19 @@ class GoogleSheetsService {
   /**
    * Ensures the configured sheetName exists; if not, fallback to the first sheet in the spreadsheet.
    */
-  async ensureActiveSheet() {
+  async ensureActiveSheet(strict = false) {
     const info = await this.getSpreadsheetInfo();
     if (!info || !Array.isArray(info.sheets) || info.sheets.length === 0) {
       throw new Error('Spreadsheet has no sheets');
     }
     const exists = info.sheets.includes(this.sheetName);
     if (!exists) {
-      // Fallback to the first tab
-      this.sheetName = info.sheets[0];
+      if (strict) {
+        throw new Error(`Target sheet tab "${this.sheetName}" not found. Available tabs: ${info.sheets.join(', ')}`);
+      } else {
+        // Fallback to the first tab
+        this.sheetName = info.sheets[0];
+      }
     }
   }
 
@@ -463,8 +486,8 @@ class GoogleSheetsService {
         { canonical: 'certNumber', names: ['cert', 'cert #', 'cert number', 'certification number'] }
       ];
 
-      // Score each row by how many candidate headers it matches; pick the best
-      let best = { idx: -1, score: -1, headers: [] };
+  // Score each row by how many candidate headers it matches; pick the best
+  let best = { idx: -1, score: -1, headers: [] };
       rows.forEach((row, rIdx) => {
         let score = 0;
         for (const cell of row) {
@@ -489,11 +512,114 @@ class GoogleSheetsService {
         }
       });
 
-      return { headers, indexByCanonical };
+      return { headers, indexByCanonical, headerRow: best.idx + 1 };
     } catch (e) {
       // On any error, return null so caller can fallback to legacy order
       return null;
     }
+  }
+
+  /**
+   * Converts a zero-based column index to a Google Sheets column letter (e.g., 0 -> A, 27 -> AB)
+   */
+  columnIndexToLetter(index) {
+    let result = '';
+    let n = index + 1;
+    while (n > 0) {
+      const rem = (n - 1) % 26;
+      result = String.fromCharCode(65 + rem) + result;
+      n = Math.floor((n - 1) / 26);
+    }
+    return result;
+  }
+
+  /**
+   * Copy formatting and data validation from a template row to the appended row
+   * @param {Object|null} headerMap
+   * @param {string|null} updatedRange - A1 range returned by append e.g. `'Input Sheet'!A204:I204`
+   */
+  async applyFormattingAndValidation(headerMap, updatedRange) {
+    if (!updatedRange || !headerMap || !headerMap.headers || !headerMap.headerRow) return;
+
+    // Extract start and end row from A1 notation
+    const match = updatedRange.match(/!(?:[A-Z]+)(\d+):(?:[A-Z]+)(\d+)/);
+    if (!match) return;
+    const startRow = parseInt(match[1], 10);
+    const endRow = parseInt(match[2], 10);
+    if (isNaN(startRow) || isNaN(endRow)) return;
+
+    // Determine a template row: previous row or first data row after header
+    const firstDataRow = headerMap.headerRow + 1;
+    const templateRow = Math.max(firstDataRow, startRow - 1);
+    if (templateRow >= startRow) return; // nothing to copy from
+
+    const sheetId = await this.getSheetIdByName(this.sheetName);
+    const startCol = 0;
+    const endCol = headerMap.headers.length; // exclusive
+
+    const requests = [];
+
+    // Paste formatting
+    requests.push({
+      copyPaste: {
+        source: {
+          sheetId,
+          startRowIndex: templateRow - 1,
+          endRowIndex: templateRow,
+          startColumnIndex: startCol,
+          endColumnIndex: endCol
+        },
+        destination: {
+          sheetId,
+          startRowIndex: startRow - 1,
+          endRowIndex: endRow,
+          startColumnIndex: startCol,
+          endColumnIndex: endCol
+        },
+        pasteType: 'PASTE_FORMAT',
+        pasteOrientation: 'NORMAL'
+      }
+    });
+
+    // Paste data validations (dropdowns)
+    requests.push({
+      copyPaste: {
+        source: {
+          sheetId,
+          startRowIndex: templateRow - 1,
+          endRowIndex: templateRow,
+          startColumnIndex: startCol,
+          endColumnIndex: endCol
+        },
+        destination: {
+          sheetId,
+          startRowIndex: startRow - 1,
+          endRowIndex: endRow,
+          startColumnIndex: startCol,
+          endColumnIndex: endCol
+        },
+        pasteType: 'PASTE_DATA_VALIDATION',
+        pasteOrientation: 'NORMAL'
+      }
+    });
+
+    await this.sheets.spreadsheets.batchUpdate({
+      spreadsheetId: this.spreadsheetId,
+      resource: { requests }
+    });
+  }
+
+  /**
+   * Get numeric sheetId for a given sheet name (cached)
+   */
+  async getSheetIdByName(name) {
+    if (this._sheetIdCache[name]) return this._sheetIdCache[name];
+    const resp = await this.sheets.spreadsheets.get({ spreadsheetId: this.spreadsheetId });
+    const sheet = resp.data.sheets.find(s => s.properties.title === name);
+    if (!sheet) throw new Error(`Sheet tab not found: ${name}`);
+    const id = sheet.properties.sheetId;
+    this._sheetIdCache[name] = id;
+    return id;
   }
 }
 

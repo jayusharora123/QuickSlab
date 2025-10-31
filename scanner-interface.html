@@ -792,12 +792,23 @@
           const sheetUrl = result.spreadsheetId
             ? `https://docs.google.com/spreadsheets/d/${result.spreadsheetId}/edit`
             : null;
-          const details = [
+          // Parse row(s) from updatedRange like `'Input Sheet'!A204:I204`
+          let rowText = '';
+          if (result.updatedRange) {
+            const m = result.updatedRange.match(/!(?:[A-Z]+)(\d+):(?:[A-Z]+)(\d+)/);
+            if (m) {
+              const startRow = parseInt(m[1], 10);
+              const endRow = parseInt(m[2], 10);
+              rowText = startRow === endRow ? `Row ${startRow}` : `Rows ${startRow}–${endRow}`;
+            }
+          }
+          const detailsParts = [
             result.sheetName ? `Sheet: ${result.sheetName}` : null,
-            result.updatedRange ? `Range: ${result.updatedRange}` : null
-          ].filter(Boolean).join(' • ');
+            rowText
+          ].filter(Boolean);
+          const details = detailsParts.length ? ` (${detailsParts.join(' • ')})` : '';
           const linkHtml = sheetUrl ? ` <a href="${sheetUrl}" target="_blank" rel="noopener">Open Sheet</a>` : '';
-          showStatus(`✅ Successfully added to Google Sheets! ${details}${linkHtml ? ' • ' + linkHtml : ''}`, 'success');
+          showStatus(`✅ Card added to Google Sheets${details}.${linkHtml ? ' ' + linkHtml : ''}`, 'success');
         } else {
           const errorMsg = result.error || 'Failed to add to Google Sheets';
           console.error('Add to sheets error:', errorMsg);
