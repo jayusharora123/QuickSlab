@@ -582,6 +582,23 @@
         </button>
       </div>
       
+      <!-- Batch Lookup -->
+      <div class="card-data">
+        <h3>📦 Batch Lookup (paste certs)</h3>
+        <div class="input-group">
+          <label for="batchTextarea">Paste certificate numbers (one per line or comma‑separated)</label>
+          <textarea id="batchTextarea" rows="5" placeholder="e.g.\n95610741\n126163696\n126356658" style="width:100%; padding:12px; border: 2px solid #e0e0e0; border-radius: 8px; font-size: 14px;"></textarea>
+        </div>
+        <div style="display:flex; gap:10px; flex-wrap: wrap;">
+          <button class="btn btn-primary" onclick="batchLookup()">🔎 Batch Lookup</button>
+          <button class="btn btn-secondary" onclick="addBatchFoundToSheets()" id="batchAddBtn" disabled>📊 Add All Found to Sheets</button>
+          <button class="btn btn-primary" onclick="selectAllBatch()" id="batchSelectAllBtn" style="padding: 8px 16px; font-size: 14px;" disabled>✅ Select All</button>
+          <button class="btn btn-primary" onclick="addBatchSelectedToSheets()" id="batchAddSelectedBtn" style="padding: 8px 16px; font-size: 14px;" disabled>📊 Add Selected to Sheets</button>
+        </div>
+        <div id="batchSummary" style="margin-top:10px; color:#555;"></div>
+        <div id="batchResults" style="margin-top:10px;"></div>
+      </div>
+      
       <!-- Scan History -->
       <div class="history-section">
         <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
@@ -648,6 +665,14 @@
           const checkboxes = document.querySelectorAll('#historyTableBody input[type="checkbox"]:not([disabled])');
           const selectAllBtn = document.getElementById('selectAllBtn');
           const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+          selectAllBtn.textContent = allChecked ? 'Deselect All' : 'Select All';
+        }
+        if (event.target.type === 'checkbox' && event.target.closest('#batchTableBody')) {
+          updateBatchAddSelectedButton();
+          // Update batch "Select All" button text based on current state
+          const checkboxes = document.querySelectorAll('#batchTableBody input[type="checkbox"]:not([disabled])');
+          const selectAllBtn = document.getElementById('batchSelectAllBtn');
+          const allChecked = checkboxes.length > 0 && Array.from(checkboxes).every(cb => cb.checked);
           selectAllBtn.textContent = allChecked ? 'Deselect All' : 'Select All';
         }
       });
@@ -1153,6 +1178,170 @@ Make sure your sheet has "Anyone with the link can edit" permissions.`);
       if (!gradeString) return '';
       const match = gradeString.match(/(\d+(?:\.\d+)?)$/);
       return match ? match[1] : '';
+    }
+
+    // === Batch Lookup ===
+    function parseCertList(text) {
+      if (!text) return [];
+      // Accept newline, comma, tabs; extract 8-12 digit sequences
+      const matches = text.match(/\b\d{8,12}\b/g) || [];
+      // Normalize and dedupe while preserving order
+      const seen = new Set();
+      const result = [];
+      for (const m of matches) {
+        if (!seen.has(m)) { seen.add(m); result.push(m); }
+      }
+      return result;
+    }
+
+    async function batchLookup() {
+      const text = document.getElementById('batchTextarea').value;
+      const certs = parseCertList(text);
+      if (!certs.length) {
+        showStatus('Please paste one or more certificate numbers first.', 'error');
+        return;
+      }
+      showStatus(`🔄 Looking up ${certs.length} certificate(s)...`, 'loading');
+      document.getElementById('batchSummary').textContent = '';
+      document.getElementById('batchResults').innerHTML = '';
+  document.getElementById('batchAddBtn').disabled = true;
+  document.getElementById('batchAddSelectedBtn').disabled = true;
+  document.getElementById('batchSelectAllBtn').disabled = true;
+
+      try {
+        const response = await fetch(`${API_BASE}/certs/lookup`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ certNumbers: certs })
+        });
+        const data = await response.json();
+        if (!response.ok || !data.success) throw new Error(data.error || 'Batch lookup failed');
+
+        const results = data.results || [];
+        let ok = 0, fail = 0;
+        const rows = results.map((r, idx) => {
+          const success = !!r.success;
+          if (success) ok++; else fail++;
+          const cd = r.PSACert || {};
+          const name = cd.Subject || cd.CardName || '';
+          const grade = cd.NumericGrade || (cd.Grade || '').toString().match(/\d+/)?.[0] || '';
+          return `<tr class="${success ? '' : 'error'}">
+            <td class="checkbox-cell"><input type="checkbox" value="${idx}" ${success ? '' : 'disabled'} /></td>
+            <td class="cert-number">${r.certNumber}</td>
+            <td>${success ? '✅' : '❌'}</td>
+            <td>${success ? escapeHtml(name) : '-'}</td>
+            <td>${success ? escapeHtml(cd.CardNumber || '') : '-'}</td>
+            <td>${success ? escapeHtml(grade) : '-'}</td>
+          </tr>`;
+        }).join('');
+
+        const tableHtml = `
+          <table class="scan-table">
+            <thead><tr><th>Select</th><th>Cert #</th><th>Status</th><th>Card</th><th>Card #</th><th>Grade</th></tr></thead>
+            <tbody id="batchTableBody">${rows || '<tr><td colspan="6">No results</td></tr>'}</tbody>
+          </table>`;
+        document.getElementById('batchResults').innerHTML = tableHtml;
+        document.getElementById('batchSummary').textContent = `Found ${ok} / ${results.length}.`;
+        document.getElementById('batchAddBtn').disabled = ok === 0;
+        document.getElementById('batchAddSelectedBtn').disabled = ok === 0;
+        document.getElementById('batchSelectAllBtn').disabled = ok === 0;
+
+        // Cache last batch results for Add-to-Sheets step
+        window.__lastBatchResults = results;
+        showStatus('✅ Batch lookup complete', 'success');
+      } catch (e) {
+        console.error('Batch lookup error:', e);
+        showStatus(`❌ ${e.message}`, 'error');
+      }
+    }
+
+    async function addBatchFoundToSheets() {
+      const results = window.__lastBatchResults || [];
+      const successItems = results.filter(r => r.success && r.PSACert);
+      if (!successItems.length) {
+        showStatus('Nothing to add. Run a batch lookup first.', 'error');
+        return;
+      }
+      showStatus(`📊 Adding ${successItems.length} card(s) to Google Sheets...`, 'loading');
+      let ok = 0, fail = 0;
+      for (const item of successItems) {
+        try {
+          const resp = await fetch('/api/add-to-sheets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ psaData: item.PSACert })
+          });
+          if (!resp.ok) throw new Error(await resp.text());
+          const r = await resp.json();
+          if (r && r.success) ok++; else fail++;
+        } catch (e) {
+          fail++;
+        }
+      }
+      showStatus(`✅ Added ${ok} card(s) to Google Sheets${fail ? `, ${fail} failed` : ''}.`, fail ? 'warning' : 'success');
+    }
+
+    // Batch selection helpers
+    function selectAllBatch() {
+      const checkboxes = document.querySelectorAll('#batchTableBody input[type="checkbox"]:not([disabled])');
+      if (!checkboxes.length) return;
+      const allChecked = Array.from(checkboxes).every(cb => cb.checked);
+      checkboxes.forEach(cb => cb.checked = !allChecked);
+      const btn = document.getElementById('batchSelectAllBtn');
+      btn.textContent = allChecked ? 'Select All' : 'Deselect All';
+      updateBatchAddSelectedButton();
+    }
+
+    function updateBatchAddSelectedButton() {
+      const selectedCount = document.querySelectorAll('#batchTableBody input[type="checkbox"]:checked').length;
+      const addBtn = document.getElementById('batchAddSelectedBtn');
+      addBtn.disabled = selectedCount === 0;
+      addBtn.textContent = selectedCount > 0 ? `Add Selected (${selectedCount}) to Sheets` : 'Add Selected to Sheets';
+    }
+
+    async function addBatchSelectedToSheets() {
+      const results = window.__lastBatchResults || [];
+      const selected = Array.from(document.querySelectorAll('#batchTableBody input[type="checkbox"]:checked'))
+        .map(cb => parseInt(cb.value, 10))
+        .filter(i => results[i] && results[i].success && results[i].PSACert)
+        .map(i => results[i]);
+
+      if (!selected.length) {
+        showStatus('No batch items selected to add.', 'error');
+        return;
+      }
+
+      const addBtn = document.getElementById('batchAddSelectedBtn');
+      const originalText = addBtn.textContent;
+      addBtn.disabled = true;
+      addBtn.textContent = 'Adding selected...';
+
+      let ok = 0, fail = 0;
+      for (const item of selected) {
+        try {
+          const resp = await fetch('/api/add-to-sheets', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ psaData: item.PSACert })
+          });
+          if (!resp.ok) throw new Error(await resp.text());
+          const r = await resp.json();
+          if (r && r.success) ok++; else fail++;
+        } catch (e) {
+          fail++;
+        }
+      }
+
+      showStatus(`✅ Added ${ok} selected card(s) to Google Sheets${fail ? `, ${fail} failed` : ''}.`, fail ? 'warning' : 'success');
+      addBtn.disabled = false;
+      addBtn.textContent = originalText;
+      // Clear selections after add
+      document.querySelectorAll('#batchTableBody input[type="checkbox"]:checked').forEach(cb => cb.checked = false);
+      updateBatchAddSelectedButton();
+    }
+
+    function escapeHtml(str) {
+      return (str||'').toString().replace(/[&<>"']/g, m => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;','\'':'&#39;' }[m]));
     }
 
     // === QR CODE SCANNER FUNCTIONALITY ===
