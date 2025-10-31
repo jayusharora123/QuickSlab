@@ -143,30 +143,85 @@ class GoogleSheetsService {
         ];
       }
 
-      // Compute next row inside the table by scanning the primary data column below the header
-      const lastColIdx = headerMap && headerMap.headers ? Math.max(0, headerMap.headers.length - 1) : 6; // default to G
-      const lastColLetter = this.columnIndexToLetter(lastColIdx);
-      const dataColIdx = (headerMap && headerMap.indexByCanonical && (headerMap.indexByCanonical.cardName ?? headerMap.indexByCanonical.certNumber)) ?? 0;
-      const dataColLetter = this.columnIndexToLetter(dataColIdx);
-      const firstDataRow = (headerMap?.headerRow || 1) + 1;
-      const scanRange = `${this.sheetName}!${dataColLetter}${firstDataRow}:${dataColLetter}`;
+      // Determine critical column indices for A–E style inputs we own
+      const idxCardName = headerMap?.indexByCanonical?.cardName ?? 0;
+      const idxCardNumber = headerMap?.indexByCanonical?.cardNumber ?? 1;
+      const idxCompany = headerMap?.indexByCanonical?.company ?? 2;
+      const idxGrade = headerMap?.indexByCanonical?.grade ?? 3;
+      const idxCert = headerMap?.indexByCanonical?.certNumber ?? 4;
 
-      const colResp = await this.sheets.spreadsheets.values.get({
+      // We'll only ever write the contiguous block covering these columns
+      const writeStartIdx = Math.min(idxCardName, idxCardNumber, idxCompany, idxGrade, idxCert);
+      const writeEndIdx = Math.max(idxCardName, idxCardNumber, idxCompany, idxGrade, idxCert);
+      const writeStartLetter = this.columnIndexToLetter(writeStartIdx);
+      const writeEndLetter = this.columnIndexToLetter(writeEndIdx);
+
+      // Find the correct target row:
+      // - Prefer a row whose cert matches the card we’re adding (update that row A–E)
+      // - Else pick the first row where BOTH card name and cert are empty (insert)
+      // - If a row has a name but no cert, treat it as occupied; skip it
+      const firstDataRow = (headerMap?.headerRow || 1) + 1;
+      const scanStartIdx = Math.min(idxCardName, idxCert);
+      const scanEndIdx = Math.max(idxCardName, idxCert);
+      const scanStartLetter = this.columnIndexToLetter(scanStartIdx);
+      const scanEndLetter = this.columnIndexToLetter(scanEndIdx);
+      const scanRange = `${this.sheetName}!${scanStartLetter}${firstDataRow}:${scanEndLetter}`;
+
+      const scanResp = await this.sheets.spreadsheets.values.get({
         spreadsheetId: this.spreadsheetId,
         range: scanRange,
         majorDimension: 'ROWS'
       });
-      const existing = colResp.data.values || [];
-      const nextRow = firstDataRow + existing.length; // appends after last non-empty in data column
+      const rows = scanResp.data.values || [];
+      const certToAdd = (fieldToValue.certNumber || '').toString().trim();
 
-      // Write directly to the computed next row within the table range
+      let targetRow = null;
+      let firstEmptyRow = null;
+
+      for (let i = 0; i < rows.length; i++) {
+        const relRow = rows[i] || [];
+        const nameCell = (relRow[idxCardName - scanStartIdx] || '').toString().trim();
+        const certCell = (relRow[idxCert - scanStartIdx] || '').toString().trim();
+
+        if (certCell) {
+          // Strong match on cert – prefer updating this row
+          if (certToAdd && certCell === certToAdd) {
+            targetRow = firstDataRow + i;
+            break;
+          }
+          // Different cert present → definitely occupied, skip
+          continue;
+        }
+
+        // No cert – if there is a name, treat as occupied (don’t overwrite)
+        if (nameCell) {
+          continue;
+        }
+
+        // Both empty – potential insert location (keep the first one)
+        if (!firstEmptyRow) {
+          firstEmptyRow = firstDataRow + i;
+        }
+      }
+
+      if (!targetRow) {
+        // If we didn’t find a matching cert row, use first empty slot if discovered
+        targetRow = firstEmptyRow || (firstDataRow + rows.length);
+      }
+
+      // Build the write payload only for the columns we own (contiguous A–E style segment)
+      const writeRow = new Array(writeEndIdx - writeStartIdx + 1).fill('');
+      writeRow[idxCardName - writeStartIdx] = fieldToValue.cardName;
+      writeRow[idxCardNumber - writeStartIdx] = fieldToValue.cardNumber;
+      writeRow[idxCompany - writeStartIdx] = fieldToValue.company;
+      writeRow[idxGrade - writeStartIdx] = fieldToValue.grade;
+      writeRow[idxCert - writeStartIdx] = fieldToValue.certNumber;
+
       const updateResult = await this.sheets.spreadsheets.values.update({
         spreadsheetId: this.spreadsheetId,
-        range: `${this.sheetName}!A${nextRow}:${lastColLetter}${nextRow}`,
+        range: `${this.sheetName}!${writeStartLetter}${targetRow}:${writeEndLetter}${targetRow}`,
         valueInputOption: 'USER_ENTERED',
-        resource: {
-          values: [valuesRow]
-        }
+        resource: { values: [writeRow] }
       });
 
       // Best effort: copy formatting and data validation from the previous row (or row after header)
@@ -180,7 +235,7 @@ class GoogleSheetsService {
         success: true,
         updatedRange: updateResult.data.updatedRange,
         updatedRows: 1,
-        rowData: valuesRow,
+        rowData: writeRow,
         sheetName: this.sheetName,
         spreadsheetId: this.spreadsheetId,
         message: `Successfully added ${sheetsData.Subject || 'card'} to Google Sheets`
