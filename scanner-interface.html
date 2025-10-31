@@ -941,7 +941,7 @@
     /**
      * Add selected cards to Google Sheets in batch
      */
-    async function addSelectedToSheets() {
+  async function addSelectedToSheets() {
       const selectedCheckboxes = document.querySelectorAll('#historyTableBody input[type="checkbox"]:checked');
       const selectedIndices = Array.from(selectedCheckboxes).map(cb => parseInt(cb.value));
       
@@ -955,8 +955,9 @@
       addBtn.disabled = true;
       addBtn.textContent = 'Adding cards...';
       
-      let successCount = 0;
-      let errorCount = 0;
+  let successCount = 0;
+  let errorCount = 0;
+  const results = [];
       
       showStatus(`Adding ${selectedIndices.length} cards to Google Sheets...`, 'info');
       
@@ -975,7 +976,15 @@
             });
             
             if (response.ok) {
+              const resJson = await response.json().catch(() => ({}));
               successCount++;
+              if (resJson && resJson.success) {
+                results.push({
+                  updatedRange: resJson.updatedRange,
+                  sheetName: resJson.sheetName,
+                  spreadsheetId: resJson.spreadsheetId
+                });
+              }
               // Mark checkbox as processed by unchecking it
               selectedCheckboxes[selectedIndices.indexOf(index)].checked = false;
             } else {
@@ -992,12 +1001,31 @@
       // Show final status
       let statusMessage = '';
       let statusType = 'info';
+
+      // Build a friendly detail similar to single-add, when we have consistent info
+      let details = '';
+      if (results.length > 0) {
+        const sheet = results[0].sheetName;
+        const spreadsheetId = results[0].spreadsheetId;
+        const rows = [];
+        for (const r of results) {
+          if (r.updatedRange) {
+            const m = r.updatedRange.match(/!(?:[A-Z]+)(\d+):(?:[A-Z]+)(\d+)/);
+            if (m) rows.push(parseInt(m[1], 10));
+          }
+        }
+        rows.sort((a,b)=>a-b);
+        const rowText = rows.length ? (rows.length === 1 ? `Row ${rows[0]}` : `Rows ${rows[0]}–${rows[rows.length-1]}`) : '';
+        const parts = [sheet ? `Sheet: ${sheet}` : null, rowText].filter(Boolean);
+        const link = spreadsheetId ? ` <a href="https://docs.google.com/spreadsheets/d/${spreadsheetId}/edit" target="_blank" rel="noopener">Open Sheet</a>` : '';
+        details = parts.length ? ` (${parts.join(' • ')})${link ? '.' : ''}${link}` : '';
+      }
       
       if (successCount > 0 && errorCount === 0) {
-        statusMessage = `Successfully added ${successCount} card${successCount > 1 ? 's' : ''} to Google Sheets!`;
+        statusMessage = `✅ Successfully added ${successCount} card${successCount > 1 ? 's' : ''} to Google Sheets!${details ? ' ' + details : ''}`;
         statusType = 'success';
       } else if (successCount > 0 && errorCount > 0) {
-        statusMessage = `Added ${successCount} card${successCount > 1 ? 's' : ''} successfully, ${errorCount} failed`;
+        statusMessage = `Added ${successCount} card${successCount > 1 ? 's' : ''} successfully, ${errorCount} failed.${details ? ' ' + details : ''}`;
         statusType = 'warning';
       } else {
         statusMessage = `Failed to add ${errorCount} card${errorCount > 1 ? 's' : ''}`;

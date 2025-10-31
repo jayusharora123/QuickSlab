@@ -143,39 +143,43 @@ class GoogleSheetsService {
         ];
       }
 
-      // Determine the table range to append within the visible table (keep using the table)
-      // If headers were detected, anchor the append to the header row across header columns.
-      // This makes Sheets append inside the table instead of outside of it.
-      let targetRange = `${this.sheetName}!A:ZZ`;
-      if (headerMap && headerMap.headers && headerMap.headerRow) {
-        const lastColIdx = Math.max(0, headerMap.headers.length - 1);
-        const lastColLetter = this.columnIndexToLetter(lastColIdx);
-        targetRange = `${this.sheetName}!A${headerMap.headerRow}:${lastColLetter}${headerMap.headerRow}`;
-      }
+      // Compute next row inside the table by scanning the primary data column below the header
+      const lastColIdx = headerMap && headerMap.headers ? Math.max(0, headerMap.headers.length - 1) : 6; // default to G
+      const lastColLetter = this.columnIndexToLetter(lastColIdx);
+      const dataColIdx = (headerMap && headerMap.indexByCanonical && (headerMap.indexByCanonical.cardName ?? headerMap.indexByCanonical.certNumber)) ?? 0;
+      const dataColLetter = this.columnIndexToLetter(dataColIdx);
+      const firstDataRow = (headerMap?.headerRow || 1) + 1;
+      const scanRange = `${this.sheetName}!${dataColLetter}${firstDataRow}:${dataColLetter}`;
 
-      // Use append to avoid overwriting and eliminate row limit issues
-      const appendResult = await this.sheets.spreadsheets.values.append({
+      const colResp = await this.sheets.spreadsheets.values.get({
         spreadsheetId: this.spreadsheetId,
-        range: targetRange,
+        range: scanRange,
+        majorDimension: 'ROWS'
+      });
+      const existing = colResp.data.values || [];
+      const nextRow = firstDataRow + existing.length; // appends after last non-empty in data column
+
+      // Write directly to the computed next row within the table range
+      const updateResult = await this.sheets.spreadsheets.values.update({
+        spreadsheetId: this.spreadsheetId,
+        range: `${this.sheetName}!A${nextRow}:${lastColLetter}${nextRow}`,
         valueInputOption: 'USER_ENTERED',
-        insertDataOption: 'INSERT_ROWS',
         resource: {
           values: [valuesRow]
         }
       });
 
-      // Best effort: copy formatting and data validation from a template row to the newly added row
+      // Best effort: copy formatting and data validation from the previous row (or row after header)
       try {
-        await this.applyFormattingAndValidation(headerMap, appendResult.data.updates?.updatedRange);
+        await this.applyFormattingAndValidation(headerMap, updateResult.data.updatedRange);
       } catch (fmtErr) {
-        // Non-fatal; log and continue
         console.warn('Formatting/validation copy skipped:', fmtErr.message);
       }
 
       return {
         success: true,
-        updatedRange: appendResult.data.updates?.updatedRange,
-        updatedRows: appendResult.data.updates?.updatedRows || 1,
+        updatedRange: updateResult.data.updatedRange,
+        updatedRows: 1,
         rowData: valuesRow,
         sheetName: this.sheetName,
         spreadsheetId: this.spreadsheetId,
